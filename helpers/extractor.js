@@ -1,143 +1,219 @@
-import { extractionTemplates, extractionTemplateKTM, extractionTemplateHONDA, extractionTemplateBAJAJ, extractionTemplateTVS } from './templates.js';
+import {
+  extractionTemplates,
+  extractionTemplateKTM,
+  extractionTemplateHONDA,
+  extractionTemplateBAJAJ,
+  extractionTemplateTVS
+} from './templates.js';
+
+const OEM_TEMPLATES = {
+  KTM: extractionTemplateKTM,
+  HONDA: extractionTemplateHONDA,
+  BAJAJ: extractionTemplateBAJAJ,
+  TVS: extractionTemplateTVS
+};
+
+// Fields extracted directly from regex templates
+const TEMPLATE_FIELDS = [
+  'customerName',
+  'customerAddress',
+  'pincode',
+  'hypothecation',
+  'chassisNo',
+  'engineNo',
+  'model',
+  'variant',
+  'exshowroom',
+  'cc'
+];
 
 const getTemplates = (oem) => {
-  const normalizedOem = oem?.toUpperCase();
-
-  if (normalizedOem === 'KTM') {
-    return extractionTemplateKTM;
+  const oemTemplate = OEM_TEMPLATES[oem?.toUpperCase()];
+  if (!oemTemplate) {
+    return extractionTemplates;
   }
 
-  if (normalizedOem === 'HONDA') {
-    return extractionTemplateHONDA;
-  }
-
-  if (normalizedOem === 'BAJAJ') {
-    return extractionTemplateBAJAJ;
-  }
-
-  if (normalizedOem === 'TVS') {
-    return extractionTemplateTVS;
-  }
-
-  return extractionTemplates;
+  // OEM patterns first, then shared fallbacks
+  return mergeTemplates(oemTemplate, extractionTemplates);
 };
 
-//? Generic Function to extract data
-const dataExtractor = async (text, oem, dealerCode) => {
-  const normalizedOem = oem?.toUpperCase();
-  const templates = getTemplates(oem);
+const mergeTemplates = (primary, fallback) => {
+  const fields = new Set([
+    ...Object.keys(primary),
+    ...Object.keys(fallback)
+  ]);
 
-  const result = {
-    customerName: normalizedOem === 'BAJAJ'
-      ? extractBajajCustomerName(text, templates.customerName)
-      : normalizedOem === 'TVS'
-        ? extractTvsCustomerName(text, templates.customerName)
-        : extractField(text, templates.customerName),
+  const merged = {};
+  for (const field of fields) {
+    merged[field] = [
+      ...(primary[field] || []),
+      ...(fallback[field] || [])
+    ];
+  }
 
-    customerAddress: normalizedOem === 'TVS'
-      ? extractTvsCustomerAddress(text, templates.customerAddress)
-      : extractField(text, templates.customerAddress),
-
-    pincode: extractField(
-      text,
-      templates.pincode
-    ),
-
-    hypothecation: extractField(
-      text,
-      templates.hypothecation
-    ),
-
-    chassisNo: extractField(
-      text,
-      templates.chassisNo
-    ),
-
-    engineNo: extractField(
-      text,
-      templates.engineNo
-    ),
-
-    model: extractField(
-      text,
-      templates.model
-    ),
-
-    variant: extractField(
-      text,
-      templates.variant
-    ),
-
-    exshowroom: extractField(
-      text,
-      templates.exshowroom
-    )
-
-  };
-
-  return result;
-
+  return merged;
 };
- 
-//? Function to Extract Fields
-const extractField = (text, patterns) => {
+
+const extractField = (text, patterns = []) => {
   for (const pattern of patterns) {
     const match = text.match(pattern);
 
-    if (match?.[1]) {
-      return match[1].trim().replace(/\s+/g, " ");
+    if (!match) {
+      continue;
     }
 
-    if (match?.[0]) {
-      return match[0].trim().replace(/\s+/g, " ");
+    // Pattern has capture groups — use them; skip if all empty
+    if (match.length > 1) {
+      const groups = match.slice(1).filter((g) => g != null && String(g).trim());
+      if (groups.length > 0) {
+        return groups.map((g) => g.trim()).join(' ').replace(/\s+/g, ' ');
+      }
+      continue;
+    }
+
+    // Pattern with no capture groups — return full match
+    if (match[0]) {
+      return match[0].trim().replace(/\s+/g, ' ');
     }
   }
 
   return null;
 };
 
-const extractBajajCustomerName = (text, patterns) => {
-  const name = extractField(text, patterns);
-  const relation = extractField(text, [
-    /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:\s*([^\n\r]+)/i
-  ]);
+const extractFromTemplates = (text, templates) => {
+  const extracted = {};
 
-  if (!name) {
+  for (const field of TEMPLATE_FIELDS) {
+    extracted[field] = extractField(text, templates[field]);
+  }
+
+  return extracted;
+};
+
+const sanitizeHypothecation = (value) => {
+  if (!value) {
     return null;
   }
 
-  return relation ? `${name} ${relation}` : name;
+  const cleaned = value.trim().replace(/\s+/g, ' ');
+
+  if (!cleaned || /^[,.\-\s]+$/.test(cleaned)) {
+    return null;
+  }
+
+  if (/not held under hire-purchase/i.test(cleaned)) {
+    return null;
+  }
+
+  if (/^credit note/i.test(cleaned)) {
+    return null;
+  }
+
+  return cleaned;
 };
 
-const extractTvsCustomerName = (text, patterns) => {
-  const name = extractField(text, patterns);
-  const relation = extractField(text, [
+const normalizeRelation = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const cleaned = value.trim().replace(/\s+/g, ' ');
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (/^(S\/O|W\/O|D\/O|C\/O|S\/W\/D)\b/i.test(cleaned)) {
+    return cleaned;
+  }
+
+  return `S/W/D:${cleaned}`;
+};
+
+const splitFirstLastName = (customerName, relation) => {
+  if (!customerName) {
+    return { firstName: null, lastName: null };
+  }
+
+  const parts = customerName.trim().split(/\s+/);
+
+  if (parts.length >= 3) {
+    return {
+      firstName: parts.slice(0, -1).join(' '),
+      lastName: parts[parts.length - 1]
+    };
+  }
+
+  return {
+    firstName: customerName,
+    lastName: relation || null
+  };
+};
+
+const extractCustomerIdentity = (text, customerName) => {
+  let name = customerName;
+
+  const dedicatedRelation = extractField(text, [
+    /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:\s*([^\n\r]+)/i,
     /S\/W\/D\s*:?\s*([^\n\r\t]+)/i
   ]);
 
-  if (!name) {
+  let relation = normalizeRelation(dedicatedRelation);
+
+  if (name) {
+    const split = name.match(
+      /^(.*?)\s+((?:S\/O|W\/O|D\/O|C\/O)\s+.+)$/i
+    );
+
+    if (split) {
+      name = split[1].trim().replace(/\s+/g, ' ');
+      relation = relation || split[2].trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  return {
+    customerName: name || null,
+    relation: relation || null
+  };
+};
+
+const normalizeCc = (value) => {
+  if (!value) {
     return null;
   }
 
-  return relation ? `${name} S/W/D:${relation}` : name;
+  // Prefer whole CC digits, e.g. 109.51 -> 109, 110 -> 110
+  const match = String(value).match(/(\d{2,4})/);
+  return match ? match[1] : null;
 };
 
-const extractTvsCustomerAddress = (text, patterns) => {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
+// Post-processors applied after raw template extraction
+const enrichExtractedData = (text, oem, raw) => {
+  const { customerName, relation } = extractCustomerIdentity(text, raw.customerName);
+  const { firstName, lastName } = splitFirstLastName(customerName, relation);
 
-    if (match?.[1] && match?.[2]) {
-      return `${match[1].trim()} ${match[2].trim()}`.replace(/\s+/g, " ");
-    }
+  return {
+    make: oem?.toUpperCase() || null,
+    customerName,
+    firstName,
+    lastName,
+    relation,
+    customerAddress: raw.customerAddress,
+    pincode: raw.pincode,
+    hypothecation: sanitizeHypothecation(raw.hypothecation),
+    chassisNo: raw.chassisNo,
+    engineNo: raw.engineNo,
+    model: raw.model,
+    variant: raw.variant,
+    exshowroom: raw.exshowroom,
+    cc: normalizeCc(raw.cc)
+  };
+};
 
-    if (match?.[1]) {
-      return match[1].trim().replace(/\s+/g, " ");
-    }
-  }
-
-  return null;
+const dataExtractor = async (text, oem, dealerCode) => {
+  const templates = getTemplates(oem);
+  const raw = extractFromTemplates(text, templates);
+  return enrichExtractedData(text, oem, raw);
 };
 
 export default dataExtractor;
-
-

@@ -119,24 +119,26 @@ export const extractionTemplateKTM = {
 export const extractionTemplateHONDA = {
   customerName: [
     /Customer Name:\s*([^\n]+?)\s*Customer Name:/i,
-    /1\.Name of the buyer\s*:\s*(.+)/i,
+    /1\.Name of the buyer\s*:\s*([^\n]+)/i,
     /Customer\s*Name\s*:\s*([^\n\r]+)/i
   ],
 
   customerAddress: [
-    /2\.Permanent Address\s*:\s*(.*?)\s*3\./is,
-    /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([^\n]+?)\s*Address\s*:/i
+    /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([\s\S]*?)\nAddress\s*:/i,
+    /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([^\n]+?)\s*Address\s*:/i,
+    /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([\s\S]*?)\nPin Code:/i,
+    /3\.\s*Permanent address[\s\S]*?\n([\s\S]*?)\nMobile\s*#/i
   ],
 
   pincode: [
     /Bill To[\s\S]*?Pin Code:\s*(\d{6})/i,
-    /2\.Permanent Address\s*:\s*[\s\S]*?(\d{6})/i
+    /3\.\s*Permanent address[\s\S]*?(\d{6})/i
   ],
 
   hypothecation: [
-    /Hypothecation\s*With\s*:\s*(.+?)\s+Credit Note:/i,
-    /hypothecation\s*in\s*favour\s*of\s*([^\n\r]+)/i,
-    /Hypothecation\s*With\s*:\s*([^\n\r]+)/i
+    /Hypothecation\s*With\s*:\s*(.*?)\s*Credit Note:/i,
+    /Hire Purchase\/Lease\/Hypothecation with\s*([^\n\r,]+)/i,
+    /hypothecation\s*in\s*favour\s*of\s*([A-Za-z0-9][^\n\r]*)/i
   ],
 
   chassisNo: [
@@ -157,9 +159,18 @@ export const extractionTemplateHONDA = {
     /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/
   ],
 
+  cc: [
+    // Prefer CC digits from model code under model name, e.g. (SCV110S) -> 110
+    /Model\(Model Code\)[\s\S]*?\n[A-Z][A-Z0-9\s]*\n\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i,
+    // Fallback: Cubic Capacity from Form 20 / Form 21 / invoice body
+    /Cubic\s*Capacity\s*:?\s*([\d.]+)\s*cc/i,
+    /Cubic\s*Capacity\s*:?\s*([\d.]+)/i,
+    /(\d{2,3}(?:\.\d+)?)\s*cc\b/i
+  ],
+
   variant: [
-    /3ID\/\s*([A-Z0-9\s]+?)(?:\n|$)/i,
-    /\(\s*([A-Z0-9\s]+?)\s*\)\s*3ID/i,
+    /\(\s*([A-Z0-9][A-Z0-9\s]*?)\s*\)\s*[0-9]ID/i,
+    /[0-9]ID\/\s*([A-Z0-9]+(?:\s+[A-Z0-9]+)?)/i,
     /Variant\s*:\s*([^\n\r]+)/i,
     /Type\s*\/\s*Variant\s*:\s*([^\n\r]+)/i
   ],
