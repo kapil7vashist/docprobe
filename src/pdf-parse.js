@@ -5,18 +5,22 @@ import dataExtractor from '../helpers/extractor.js';
 import { ENV } from '../env.js';
 import fs from 'fs';
 import findRelatedMappingData from '../helpers/findRelatedMappingData.js';
+import getRtoDetails from '../helpers/getRtoDetails.js';
+import getFinancerName from '../helpers/getFinancerName.js';
 
 const getPdfBuffer = async (oem, base64String) => {
+  const hasBase64 = base64String && String(base64String).trim();
+
+  if (hasBase64) {
+    const base64Data = base64String.replace(/^data:application\/pdf;base64,/, '');
+    return Buffer.from(base64Data, 'base64');
+  }
+
   if (ENV === 'development') {
     return readFile(path.join(process.cwd(), 'tmp', `${oem} INVOICE.pdf`));
   }
 
-  if (!base64String) {
-    return null;
-  }
-
-  const base64Data = base64String.replace(/^data:application\/pdf;base64,/, '');
-  return Buffer.from(base64Data, 'base64');
+  return null;
 };
 
 const pdfParse = async (req, res, next) => {
@@ -48,8 +52,16 @@ const pdfParse = async (req, res, next) => {
       data?.cc
     );
 
+    const rtoDetails = await getRtoDetails(insurer, data?.pincode);
+    console.log({ rtoDetails });
+
+    const financerDetails = await getFinancerName(insurer, data?.hypothecation);
+    console.log({ financerDetails });
+
     const final = {
       ...data,
+      rtoDetails,
+      financerDetails,
       closestModel: mapping?.closestModel || null,
       topMatches: mapping?.topMatches || []
     };

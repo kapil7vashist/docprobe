@@ -17,6 +17,12 @@ export const extractionTemplates = {
     /Address\s*:\s*([\s\S]*?)\s*GSTIN/i
   ],
 
+  customerMobile: [
+    /Phone\s*\(M\)\s*:\s*(\d{10})/i,
+    /Mobile\s*No\.?\s*:\s*(\d{10})/i,
+    /Mobile\s*#\s*:?\s*(\d{10})/i
+  ],
+
   pincode: [
     /Pin Code:\s*(\d{6})/i,
     /Pin\s*Code\s*:\s*(\d{6})/i,
@@ -133,6 +139,11 @@ export const extractionTemplateHONDA = {
   pincode: [
     /Bill To[\s\S]*?Pin Code:\s*(\d{6})/i,
     /3\.\s*Permanent address[\s\S]*?(\d{6})/i
+  ],
+
+  customerMobile: [
+    /Bill To[\s\S]*?Phone\s*\(M\)\s*:\s*(\d{10})/i,
+    /Bill To[\s\S]*?Mobile\s*No\.?\s*:\s*(\d{10})/i
   ],
 
   hypothecation: [

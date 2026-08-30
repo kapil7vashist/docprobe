@@ -17,6 +17,7 @@ const OEM_TEMPLATES = {
 const TEMPLATE_FIELDS = [
   'customerName',
   'customerAddress',
+  'customerMobile',
   'pincode',
   'hypothecation',
   'chassisNo',
@@ -187,6 +188,15 @@ const normalizeCc = (value) => {
   return match ? match[1] : null;
 };
 
+const normalizeMobile = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const digits = String(value).replace(/\D/g, '');
+  return digits.length === 10 ? digits : null;
+};
+
 // Post-processors applied after raw template extraction
 const enrichExtractedData = (text, oem, raw) => {
   const { customerName, relation } = extractCustomerIdentity(text, raw.customerName);
@@ -199,6 +209,7 @@ const enrichExtractedData = (text, oem, raw) => {
     lastName,
     relation,
     customerAddress: raw.customerAddress,
+    customerMobile: normalizeMobile(raw.customerMobile),
     pincode: raw.pincode,
     hypothecation: sanitizeHypothecation(raw.hypothecation),
     chassisNo: raw.chassisNo,

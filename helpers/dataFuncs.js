@@ -154,6 +154,66 @@ const getCcFilteredModels = (models, cc) => {
 
 const takeTopMatches = (ranked, limit = 3) => ranked.slice(0, limit);
 
+const pickClosestByDefaultIdv = (matches, exshowroom, cc) => {
+  if (!matches.length) {
+    return null;
+  }
+
+  const exshowroomAmount = parseAmount(exshowroom);
+  const targetIdv = exshowroomAmount != null ? exshowroomAmount * 0.95 : null;
+
+  if (!Number.isFinite(targetIdv)) {
+    return matches[0];
+  }
+
+  let best = null;
+  let bestDiff = Infinity;
+
+  for (const current of matches) {
+    const currentIdv = parseAmount(current.default_idv);
+
+    if (!Number.isFinite(currentIdv) || currentIdv <= 0) {
+      continue;
+    }
+
+    const idvDiff = Math.abs(currentIdv - targetIdv);
+    const hasCc = cc ? rowHasCc(current, cc) : false;
+
+    current.idvDiff = idvDiff;
+    current.targetIdv = targetIdv;
+
+    if (!best || idvDiff < bestDiff) {
+      best = current;
+      bestDiff = idvDiff;
+      continue;
+    }
+
+    if (idvDiff === bestDiff && cc) {
+      const bestHasCc = rowHasCc(best, cc);
+      if (hasCc && !bestHasCc) {
+        best = current;
+        bestDiff = idvDiff;
+      }
+    }
+  }
+
+  return best || matches[0];
+};
+
+const getMatchKey = (row) => `${row?.model}|${row?.variant}|${row?.default_idv}`;
+
+const moveClosestFirst = (matches, selected) => {
+  if (!selected || !matches.length) {
+    return matches;
+  }
+
+  const selectedKey = getMatchKey(selected);
+  const rest = matches.filter((row) => getMatchKey(row) !== selectedKey);
+  const selectedRow = matches.find((row) => getMatchKey(row) === selectedKey) || selected;
+
+  return [selectedRow, ...rest];
+};
+
 const findClosestByModel = (models, invoiceModel, cc) => {
   if (!models.length) {
     return [];
@@ -188,53 +248,6 @@ const findClosestVariant = (models, invoiceVariant, cc) => {
 
   ranked.sort((a, b) => b.matchScore - a.matchScore);
   return takeTopMatches(ranked);
-};
-
-const pickClosestByDefaultIdv = (matches, exshowroom, cc) => {
-  if (!matches.length) {
-    return null;
-  }
-
-  const exshowroomAmount = parseAmount(exshowroom);
-  const targetIdv = exshowroomAmount != null ? exshowroomAmount * 0.95 : null;
-
-  if (!Number.isFinite(targetIdv)) {
-    return matches[0];
-  }
-
-  let best = null;
-  let bestDiff = Infinity;
-
-  for (const current of matches) {
-    const currentIdv = parseAmount(current.default_idv);
-
-    // Ignore missing / zero IDV rows when comparing closeness
-    if (!Number.isFinite(currentIdv) || currentIdv <= 0) {
-      continue;
-    }
-
-    const idvDiff = Math.abs(currentIdv - targetIdv);
-    const hasCc = cc ? rowHasCc(current, cc) : false;
-
-    current.idvDiff = idvDiff;
-    current.targetIdv = targetIdv;
-
-    if (!best || idvDiff < bestDiff) {
-      best = current;
-      bestDiff = idvDiff;
-      continue;
-    }
-
-    if (idvDiff === bestDiff && cc) {
-      const bestHasCc = rowHasCc(best, cc);
-      if (hasCc && !bestHasCc) {
-        best = current;
-        bestDiff = idvDiff;
-      }
-    }
-  }
-
-  return best || matches[0];
 };
 
 export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRequired, exshowroom, cc) => {
@@ -303,11 +316,10 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
         ? `Selected from top ${topMatches.length} variant matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
         : `Selected from top ${topMatches.length} variant matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
 
-      topMatches = [...topMatches].sort((a, b) => {
-        if (a.idvDiff == null) return 1;
-        if (b.idvDiff == null) return -1;
-        return a.idvDiff - b.idvDiff;
-      }).map((row) => ({ ...row, matchBy: 'variant+idv' }));
+      topMatches = moveClosestFirst(topMatches, closestModel).map((row) => ({
+        ...row,
+        matchBy: 'variant+idv'
+      }));
     } else if (topMatches[0]) {
       // When IDV range is not required, select only by name/variant matchScore
       closestModel = topMatches[0];
@@ -318,7 +330,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
 
     if (closestModel) {
       closestModel = {
-        ...closestModel,
+        ...topMatches[0],
         selectionReason
       };
     }
