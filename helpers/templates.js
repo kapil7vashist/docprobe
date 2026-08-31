@@ -57,7 +57,7 @@ export const extractionTemplates = {
 
   model: [
     /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\/\s*\d{8}/i,
-    /Model\(Model Code\).*?\n([A-Z0-9\s]+)/i,
+    /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9 ]+)\s*\n\s*\(/i,
     /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/i,
     /Maker's classification.*?\n([A-Z0-9\s]+)/i,
     /Particulars[\s\S]*?\n([A-Z0-9\-]+)\s*\n([A-Z0-9\s]+)\s*\n/i
@@ -166,13 +166,14 @@ export const extractionTemplateHONDA = {
   ],
 
   model: [
-    /Model\(Model Code\)[\s\S]*?\n([A-Z]+)\s*\n/i,
-    /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/
+    /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9 ]+)\s*\n\s*\(/i,
+    /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/i,
+    /16\.\s*Maker's classification or if not known\s*([^\n(]+)/i
   ],
 
   cc: [
-    // Prefer CC digits from model code under model name, e.g. (SCV110S) -> 110
-    /Model\(Model Code\)[\s\S]*?\n[A-Z][A-Z0-9\s]*\n\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i,
+    // Prefer CC digits from model code under model name, e.g. (SCV110S) -> 110, (CBF125S) -> 125
+    /Model\(Model Code\)[\s\S]*?\n[A-Z][A-Z0-9 ]+\s*\n\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i,
     // Fallback: Cubic Capacity from Form 20 / Form 21 / invoice body
     /Cubic\s*Capacity\s*:?\s*([\d.]+)\s*cc/i,
     /Cubic\s*Capacity\s*:?\s*([\d.]+)/i,
