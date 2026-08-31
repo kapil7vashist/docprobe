@@ -37,11 +37,33 @@ const levenshteinDistance = (a, b) => {
   return rows[a.length][b.length];
 };
 
-const getVariantKeywords = (value) =>
+const getKeywords = (value) =>
   String(value || '')
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter((keyword) => keyword.length > 1);
+
+const getVariantKeywords = getKeywords;
+
+const MIN_MODEL_MATCH_SCORE = 0.55;
+
+const getModelDigitsFromName = (model) => {
+  const match = String(model || '').match(/(\d{2,4})/);
+  return match ? match[1] : null;
+};
+
+const getModelSearchKeywords = (model) => {
+  const keywords = getKeywords(model);
+  const alpha = keywords.filter((keyword) => /^[A-Z]+$/.test(keyword));
+  const digits = [...new Set(
+    keywords.flatMap((keyword) => {
+      const match = keyword.match(/(\d{2,4})/);
+      return match ? [match[1]] : [];
+    })
+  )];
+
+  return { alpha, digits };
+};
 
 const getVariantScore = (invoiceVariant, dbVariant) => {
   const invoice = normalizeText(invoiceVariant);
@@ -126,6 +148,21 @@ const getModelScore = (invoiceModel, dbModel) => {
     scores.push(1);
   }
 
+  const invoiceKeywords = getKeywords(invoiceModel);
+  const candidateKeywords = getKeywords(dbModel);
+
+  if (invoiceKeywords.length && candidateKeywords.length) {
+    const matchedCount = invoiceKeywords.filter((keyword) =>
+      candidateKeywords.some((candidateKeyword) =>
+        candidateKeyword.includes(keyword) || keyword.includes(candidateKeyword)
+      )
+    ).length;
+
+    if (matchedCount > 0) {
+      scores.push(0.5 + (0.5 * (matchedCount / invoiceKeywords.length)));
+    }
+  }
+
   if (invoice.includes(candidate) || candidate.includes(invoice)) {
     scores.push(
       0.9 * (Math.min(invoice.length, candidate.length) / Math.max(invoice.length, candidate.length))
@@ -135,7 +172,21 @@ const getModelScore = (invoiceModel, dbModel) => {
   const distance = levenshteinDistance(invoice, candidate);
   scores.push(1 - distance / Math.max(invoice.length, candidate.length));
 
-  return Math.max(...scores);
+  let score = Math.max(...scores, 0);
+  const { alpha, digits } = getModelSearchKeywords(invoiceModel);
+  const primaryAlpha = alpha[0] ? normalizeText(alpha[0]) : null;
+
+  if (primaryAlpha && !candidate.includes(primaryAlpha)) {
+    return 0;
+  }
+
+  const invoiceCc = digits[0] || getModelDigitsFromName(invoiceModel);
+
+  if (invoiceCc && !candidate.includes(invoiceCc)) {
+    score = Math.min(score, 0.4);
+  }
+
+  return score;
 };
 
 const isStandardVariant = (variant) => {
@@ -150,6 +201,18 @@ const getCcFilteredModels = (models, cc) => {
 
   const ccMatchedModels = models.filter((row) => rowHasCc(row, cc));
   return ccMatchedModels.length ? ccMatchedModels : models;
+};
+
+const filterByModelScore = (models, invoiceModel, minScore = MIN_MODEL_MATCH_SCORE) => {
+  if (!invoiceModel || !models.length) {
+    return models;
+  }
+
+  const filtered = models.filter(
+    (row) => getModelScore(invoiceModel, row.model) >= minScore
+  );
+
+  return filtered.length ? filtered : [];
 };
 
 const takeTopMatches = (ranked, limit = 3) => ranked.slice(0, limit);
@@ -219,10 +282,15 @@ const findClosestByModel = (models, invoiceModel, cc) => {
     return [];
   }
 
-  const candidates = getCcFilteredModels(models, cc);
+  let candidates = getCcFilteredModels(models, cc);
+  candidates = filterByModelScore(candidates, invoiceModel);
+
+  if (!candidates.length) {
+    return [];
+  }
+
   const ranked = [];
 
-  // Always scan every candidate — never stop early on a close match
   for (const current of candidates) {
     const score = invoiceModel ? getModelScore(invoiceModel, current.model) : 0;
     ranked.push({ ...current, matchScore: score, matchBy: 'model' });
@@ -232,15 +300,20 @@ const findClosestByModel = (models, invoiceModel, cc) => {
   return takeTopMatches(ranked);
 };
 
-const findClosestVariant = (models, invoiceVariant, cc) => {
+const findClosestVariant = (models, invoiceVariant, invoiceModel, cc) => {
   if (!models.length) {
     return [];
   }
 
-  const candidates = getCcFilteredModels(models, cc);
+  let candidates = getCcFilteredModels(models, cc);
+  candidates = filterByModelScore(candidates, invoiceModel);
+
+  if (!candidates.length) {
+    return [];
+  }
+
   const ranked = [];
 
-  // Always scan every candidate — never stop early on a close match
   for (const current of candidates) {
     const score = invoiceVariant ? getVariantScore(invoiceVariant, current.variant) : 0;
     ranked.push({ ...current, matchScore: score, matchBy: 'variant' });
@@ -250,82 +323,198 @@ const findClosestVariant = (models, invoiceVariant, cc) => {
   return takeTopMatches(ranked);
 };
 
+const fetchModels = async (
+  tableName,
+  oem,
+  model,
+  variantKeywords,
+  ccDigits,
+  applyVariantFilter,
+  useModelKeywordSearch = false
+) => {
+  const replacements = { oem };
+  let sql = `SELECT * FROM ${tableName} WHERE make = :oem`;
+  const modelClauses = [];
+
+  if (useModelKeywordSearch) {
+    const { alpha, digits } = getModelSearchKeywords(model);
+
+    alpha.forEach((keyword, index) => {
+      replacements[`mka${index}`] = `%${keyword}%`;
+      modelClauses.push(`model LIKE :mka${index}`);
+    });
+
+    digits.forEach((digit, index) => {
+      replacements[`mkd${index}`] = `%${digit}%`;
+      modelClauses.push(`model LIKE :mkd${index}`);
+    });
+
+    if (!modelClauses.length) {
+      replacements.model = `%${model}%`;
+      modelClauses.push('model LIKE :model');
+    }
+  } else {
+    replacements.model = `%${model}%`;
+    modelClauses.push('model LIKE :model');
+  }
+
+  sql += ` AND (${useModelKeywordSearch ? modelClauses.join(' AND ') : modelClauses.join(' OR ')})`;
+
+  const searchClauses = [];
+
+  if (applyVariantFilter && variantKeywords.length > 1) {
+    variantKeywords.forEach((keyword, index) => {
+      replacements[`kw${index}`] = `%${keyword}%`;
+      searchClauses.push(`variant LIKE :kw${index}`);
+    });
+  }
+
+  if (ccDigits) {
+    replacements.cc = `%${ccDigits}%`;
+    searchClauses.push('variant LIKE :cc');
+    searchClauses.push('model LIKE :cc');
+  }
+
+  if (searchClauses.length) {
+    sql += ` AND (${searchClauses.join(' OR ')})`;
+  }
+
+  return (await dbConnection.query(sql, {
+    replacements,
+    type: Sequelize.QueryTypes.SELECT
+  })) || [];
+};
+
+const fetchModelsWithFallback = async (
+  tableName,
+  oem,
+  model,
+  variantKeywords,
+  ccDigits,
+  applyVariantFilter
+) => {
+  let models = await fetchModels(
+    tableName,
+    oem,
+    model,
+    variantKeywords,
+    ccDigits,
+    applyVariantFilter,
+    false
+  );
+
+  if (models.length) {
+    return { models, usedModelKeywordFallback: false };
+  }
+
+  models = await fetchModels(
+    tableName,
+    oem,
+    model,
+    variantKeywords,
+    ccDigits,
+    applyVariantFilter,
+    true
+  );
+
+  return {
+    models,
+    usedModelKeywordFallback: models.length > 0
+  };
+};
+
+const attachIdvDiff = (matches, targetIdv) =>
+  matches.map((row) => {
+    const currentIdv = parseAmount(row.default_idv);
+    const idvDiff = Number.isFinite(currentIdv) && Number.isFinite(targetIdv)
+      ? Math.abs(currentIdv - targetIdv)
+      : null;
+
+    return {
+      ...row,
+      idvDiff,
+      targetIdv
+    };
+  });
+
+const hasVariantMatch = (matches) =>
+  matches.length > 0 && (matches[0].matchScore ?? 0) > 0;
+
+const hasUsableMatch = (matches) =>
+  matches.length > 0 && (matches[0].matchScore ?? 0) >= MIN_MODEL_MATCH_SCORE;
+
 export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRequired, exshowroom, cc) => {
   try {
     const tableName = `${insurer}_models${insurer === 'national' ? '_NF' : ''}`;
-    const useModelMatch = isStandardVariant(variant);
+    let useModelMatch = isStandardVariant(variant);
     const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
     const ccDigits = getCcDigits(cc);
-    const replacements = { oem, model: `%${model}%` };
 
-    let sql = `SELECT * FROM ${tableName} WHERE make = :oem AND model LIKE :model`;
-
-    const searchClauses = [];
-
-    if (variantKeywords.length > 1) {
-      variantKeywords.forEach((keyword, index) => {
-        replacements[`kw${index}`] = `%${keyword}%`;
-        searchClauses.push(`variant LIKE :kw${index}`);
-      });
-    }
-
-    if (ccDigits) {
-      replacements.cc = `%${ccDigits}%`;
-      searchClauses.push(`variant LIKE :cc`);
-      searchClauses.push(`model LIKE :cc`);
-    }
-
-    if (searchClauses.length) {
-      sql += ` AND (${searchClauses.join(' OR ')})`;
-    }
-
-    const models = (await dbConnection.query(sql, {
-      replacements,
-      type: Sequelize.QueryTypes.SELECT
-    })) || [];
+    let { models, usedModelKeywordFallback } = await fetchModelsWithFallback(
+      tableName,
+      oem,
+      model,
+      variantKeywords,
+      ccDigits,
+      !useModelMatch
+    );
 
     const exshowroomAmount = parseAmount(exshowroom);
     const targetIdv = exshowroomAmount != null ? exshowroomAmount * 0.95 : null;
 
-    // First get top 3 by variant / model name similarity
     let topMatches = useModelMatch
       ? findClosestByModel(models, model, cc)
-      : findClosestVariant(models, variant, cc);
+      : findClosestVariant(models, variant, model, cc);
 
-    // Attach IDV distance for every top match when possible
-    topMatches = topMatches.map((row) => {
-      const currentIdv = parseAmount(row.default_idv);
-      const idvDiff = Number.isFinite(currentIdv) && Number.isFinite(targetIdv)
-        ? Math.abs(currentIdv - targetIdv)
-        : null;
+    let usedModelMatchFallback = false;
 
-      return {
-        ...row,
-        idvDiff,
-        targetIdv
-      };
-    });
+    if (!useModelMatch && !hasVariantMatch(topMatches)) {
+      useModelMatch = true;
+      usedModelMatchFallback = true;
+      ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
+        tableName,
+        oem,
+        model,
+        variantKeywords,
+        ccDigits,
+        false
+      ));
+      topMatches = findClosestByModel(models, model, cc);
+    }
+
+    if (useModelMatch && !hasUsableMatch(topMatches)) {
+      topMatches = [];
+    }
+
+    topMatches = attachIdvDiff(topMatches, targetIdv);
 
     let closestModel = null;
     let selectionReason = null;
+    const matchLabel = useModelMatch ? 'model' : 'variant';
 
     if (isIdvRangeRequired) {
-      // Among top 3 name matches, pick closest default_idv
       closestModel = pickClosestByDefaultIdv(topMatches, exshowroom, cc);
       selectionReason = Number.isFinite(targetIdv)
-        ? `Selected from top ${topMatches.length} variant matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
-        : `Selected from top ${topMatches.length} variant matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
+        ? usedModelMatchFallback
+          ? `No variant match found; selected from top ${topMatches.length} model matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+          : usedModelKeywordFallback
+            ? `No full model-name match found; selected from top ${topMatches.length} model keyword matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+            : `Selected from top ${topMatches.length} ${matchLabel} matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+        : `Selected from top ${topMatches.length} ${matchLabel} matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
 
       topMatches = moveClosestFirst(topMatches, closestModel).map((row) => ({
         ...row,
-        matchBy: 'variant+idv'
+        matchBy: `${matchLabel}+idv`
       }));
     } else if (topMatches[0]) {
-      // When IDV range is not required, select only by name/variant matchScore
       closestModel = topMatches[0];
-      selectionReason = useModelMatch
-        ? `Selected as best model-name match (matchScore=${closestModel.matchScore})`
-        : `Selected as best variant-name match (matchScore=${closestModel.matchScore})`;
+      selectionReason = usedModelMatchFallback
+        ? `No variant match found; selected as best model-name match (matchScore=${closestModel.matchScore})`
+        : usedModelKeywordFallback
+          ? `No full model-name match found; selected using individual model keywords (matchScore=${closestModel.matchScore})`
+          : useModelMatch
+            ? `Selected as best model-name match (matchScore=${closestModel.matchScore})`
+            : `Selected as best variant-name match (matchScore=${closestModel.matchScore})`;
     }
 
     if (closestModel) {
@@ -351,8 +540,11 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     console.log({
       invoiceVariant: variant,
       useModelMatch,
+      usedModelMatchFallback,
+      usedModelKeywordFallback,
       cc,
       variantKeywords,
+      modelKeywords: getKeywords(model),
       isIdvRangeRequired,
       targetIdv,
       closestModel: closestModel

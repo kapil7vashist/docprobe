@@ -124,12 +124,14 @@ export const extractionTemplateKTM = {
 
 export const extractionTemplateHONDA = {
   customerName: [
+    /Buyer\s*\(Bill to\)\s*\n([^\n]+)/i,
     /Customer Name:\s*([^\n]+?)\s*Customer Name:/i,
     /1\.Name of the buyer\s*:\s*([^\n]+)/i,
     /Customer\s*Name\s*:\s*([^\n\r]+)/i
   ],
 
   customerAddress: [
+    /Buyer\s*\(Bill to\)\s*\n[^\n]+\n([\s\S]*?)\nMB NO/i,
     /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([\s\S]*?)\nAddress\s*:/i,
     /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([^\n]+?)\s*Address\s*:/i,
     /Bill To[\s\S]*?Customer Name:[^\n]+\nAddress\s*:\s*([\s\S]*?)\nPin Code:/i,
@@ -137,22 +139,26 @@ export const extractionTemplateHONDA = {
   ],
 
   pincode: [
+    /Buyer\s*\(Bill to\)[\s\S]*?-(\d{6})/i,
     /Bill To[\s\S]*?Pin Code:\s*(\d{6})/i,
     /3\.\s*Permanent address[\s\S]*?(\d{6})/i
   ],
 
   customerMobile: [
+    /Buyer\s*\(Bill to\)[\s\S]*?MB NO\s*-?\s*(\d{10})/i,
     /Bill To[\s\S]*?Phone\s*\(M\)\s*:\s*(\d{10})/i,
     /Bill To[\s\S]*?Mobile\s*No\.?\s*:\s*(\d{10})/i
   ],
 
   hypothecation: [
+    /HP\s*:-\s*([^\n]+)/i,
     /Hypothecation\s*With\s*:\s*(.*?)\s*Credit Note:/i,
     /Hire Purchase\/Lease\/Hypothecation with\s*([^\n\r,]+)/i,
     /hypothecation\s*in\s*favour\s*of\s*([A-Za-z0-9][^\n\r]*)/i
   ],
 
   chassisNo: [
+    /CHASSIS\s*NO\s*-?\s*([A-Z0-9]{17})/i,
     /Chassis\s*No\.?\s*(?:\([^)]+\))?\s*([A-Z0-9]{17})/i,
     /Frame\s*No\.?\s*:\s*([A-Z0-9]{17})/i,
     /Chassis number\s*:\s*([A-Z0-9]{17})/i,
@@ -160,34 +166,41 @@ export const extractionTemplateHONDA = {
   ],
 
   engineNo: [
+    /ENG\s*NO\s*-?\s*([A-Z0-9]+)/i,
     /19\.\s*Engine\s*No\.?\s*([A-Z0-9]+)/i,
     /4\.\s*Engine\s*No\.?\s*([A-Z0-9]+)/i,
     /Engine number.*?:\s*([A-Z0-9]+)/i
   ],
 
   model: [
+    /Description of Goods[\s\S]*?\n\d+\s+([A-Z][A-Z0-9 ]+?)\s+OBD/i,
+    /Description of Goods[\s\S]*?\n\d+\s+([A-Z][A-Z0-9]+(?:\s+\d{2,3}[A-Z]?)?)\s+\dID/i,
     /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9 ]+)\s*\n\s*\(/i,
     /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/i,
     /16\.\s*Maker's classification or if not known\s*([^\n(]+)/i
   ],
 
   cc: [
-    // Prefer CC digits from model code under model name, e.g. (SCV110S) -> 110, (CBF125S) -> 125
+    /Description of Goods[\s\S]*?\n\d+\s+[A-Z][A-Z0-9 ]+?(\d{2,3})[A-Z]?\s+\dID/i,
+    /Description of Goods[\s\S]*?\n\d+\s+[A-Z][A-Z0-9 ]+?\s+(\d{2,3})\s+OBD/i,
     /Model\(Model Code\)[\s\S]*?\n[A-Z][A-Z0-9 ]+\s*\n\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i,
-    // Fallback: Cubic Capacity from Form 20 / Form 21 / invoice body
     /Cubic\s*Capacity\s*:?\s*([\d.]+)\s*cc/i,
     /Cubic\s*Capacity\s*:?\s*([\d.]+)/i,
     /(\d{2,3}(?:\.\d+)?)\s*cc\b/i
   ],
 
   variant: [
+    /\d+\s+[A-Z][A-Z0-9 ]+?\s+\dID\s+([A-Z0-9 ]+?)\s+[\d,]+\./i,
+    /OBD2B\s+\dID\s+([A-Z0-9 ]+?)\s*\n/i,
     /\(\s*([A-Z0-9][A-Z0-9\s]*?)\s*\)\s*[0-9]ID/i,
     /[0-9]ID\/\s*([A-Z0-9]+(?:\s+[A-Z0-9]+)?)/i,
+    /[0-9]ID\s+([A-Z0-9]+(?:\s+[A-Z0-9]+)?)/i,
     /Variant\s*:\s*([^\n\r]+)/i,
     /Type\s*\/\s*Variant\s*:\s*([^\n\r]+)/i
   ],
 
   exshowroom: [
+    /Total\s+\S?\s*([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+)/i
   ]
