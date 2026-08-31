@@ -47,23 +47,14 @@ const getVariantKeywords = getKeywords;
 
 const MIN_MODEL_MATCH_SCORE = 0.55;
 
-const getModelDigitsFromName = (model) => {
-  const match = String(model || '').match(/(\d{2,4})/);
-  return match ? match[1] : null;
+const getAlphaModelName = (model) => {
+  const alpha = getKeywords(model).filter((keyword) => /^[A-Z]+$/.test(keyword));
+  return alpha.join(' ').trim();
 };
 
-const getModelSearchKeywords = (model) => {
-  const keywords = getKeywords(model);
-  const alpha = keywords.filter((keyword) => /^[A-Z]+$/.test(keyword));
-  const digits = [...new Set(
-    keywords.flatMap((keyword) => {
-      const match = keyword.match(/(\d{2,4})/);
-      return match ? [match[1]] : [];
-    })
-  )];
-
-  return { alpha, digits };
-};
+const getModelSearchKeywords = (model) => ({
+  alpha: getKeywords(model).filter((keyword) => /^[A-Z]+$/.test(keyword))
+});
 
 const getVariantScore = (invoiceVariant, dbVariant) => {
   const invoice = normalizeText(invoiceVariant);
@@ -120,6 +111,14 @@ const getCcDigits = (cc) => {
   return match ? match[0] : null;
 };
 
+const getModelDigitsFromName = (model) => {
+  const match = String(model || '').match(/(\d{2,4})/);
+  return match ? match[1] : null;
+};
+
+const getInvoiceCcDigits = (model, cc) =>
+  getCcDigits(cc) || getModelDigitsFromName(model);
+
 const rowHasCc = (row, cc) => {
   const digits = getCcDigits(cc);
 
@@ -134,9 +133,11 @@ const rowHasCc = (row, cc) => {
   return haystack.includes(digits);
 };
 
-const getModelScore = (invoiceModel, dbModel) => {
-  const invoice = normalizeText(invoiceModel);
-  const candidate = normalizeText(dbModel);
+const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null) => {
+  const invoiceAlpha = getAlphaModelName(invoiceModel);
+  const candidateAlpha = getAlphaModelName(dbModel);
+  const invoice = normalizeText(invoiceAlpha);
+  const candidate = normalizeText(candidateAlpha);
 
   if (!invoice || !candidate) {
     return 0;
@@ -148,8 +149,8 @@ const getModelScore = (invoiceModel, dbModel) => {
     scores.push(1);
   }
 
-  const invoiceKeywords = getKeywords(invoiceModel);
-  const candidateKeywords = getKeywords(dbModel);
+  const invoiceKeywords = getKeywords(invoiceAlpha);
+  const candidateKeywords = getKeywords(candidateAlpha);
 
   if (invoiceKeywords.length && candidateKeywords.length) {
     const matchedCount = invoiceKeywords.filter((keyword) =>
@@ -173,16 +174,29 @@ const getModelScore = (invoiceModel, dbModel) => {
   scores.push(1 - distance / Math.max(invoice.length, candidate.length));
 
   let score = Math.max(...scores, 0);
-  const { alpha, digits } = getModelSearchKeywords(invoiceModel);
+  const { alpha } = getModelSearchKeywords(invoiceModel);
   const primaryAlpha = alpha[0] ? normalizeText(alpha[0]) : null;
 
   if (primaryAlpha && !candidate.includes(primaryAlpha)) {
     return 0;
   }
 
-  const invoiceCc = digits[0] || getModelDigitsFromName(invoiceModel);
+  if (invoiceCc) {
+    const ccHaystack = normalizeText(`${dbModel} ${dbCc || ''}`);
 
-  if (invoiceCc && !candidate.includes(invoiceCc)) {
+    if (!ccHaystack.includes(invoiceCc)) {
+      score = Math.min(score, 0.4);
+    }
+  }
+
+  const dbAlpha = getKeywords(candidateAlpha).filter((keyword) => /^[A-Z]+$/.test(keyword));
+  const extraDbTokens = dbAlpha.filter(
+    (token) => !alpha.some((invoiceToken) =>
+      token === invoiceToken || token.includes(invoiceToken) || invoiceToken.includes(token)
+    )
+  );
+
+  if (alpha.length && extraDbTokens.length) {
     score = Math.min(score, 0.4);
   }
 
@@ -203,13 +217,13 @@ const getCcFilteredModels = (models, cc) => {
   return ccMatchedModels.length ? ccMatchedModels : models;
 };
 
-const filterByModelScore = (models, invoiceModel, minScore = MIN_MODEL_MATCH_SCORE) => {
+const filterByModelScore = (models, invoiceModel, invoiceCc = null, minScore = MIN_MODEL_MATCH_SCORE) => {
   if (!invoiceModel || !models.length) {
     return models;
   }
 
   const filtered = models.filter(
-    (row) => getModelScore(invoiceModel, row.model) >= minScore
+    (row) => getModelScore(invoiceModel, row.model, row.cc, invoiceCc) >= minScore
   );
 
   return filtered.length ? filtered : [];
@@ -282,8 +296,9 @@ const findClosestByModel = (models, invoiceModel, cc) => {
     return [];
   }
 
-  let candidates = getCcFilteredModels(models, cc);
-  candidates = filterByModelScore(candidates, invoiceModel);
+  const invoiceCcDigits = getInvoiceCcDigits(invoiceModel, cc);
+  let candidates = getCcFilteredModels(models, invoiceCcDigits);
+  candidates = filterByModelScore(candidates, invoiceModel, invoiceCcDigits);
 
   if (!candidates.length) {
     return [];
@@ -292,7 +307,9 @@ const findClosestByModel = (models, invoiceModel, cc) => {
   const ranked = [];
 
   for (const current of candidates) {
-    const score = invoiceModel ? getModelScore(invoiceModel, current.model) : 0;
+    const score = invoiceModel
+      ? getModelScore(invoiceModel, current.model, current.cc, invoiceCcDigits)
+      : 0;
     ranked.push({ ...current, matchScore: score, matchBy: 'model' });
   }
 
@@ -305,8 +322,9 @@ const findClosestVariant = (models, invoiceVariant, invoiceModel, cc) => {
     return [];
   }
 
-  let candidates = getCcFilteredModels(models, cc);
-  candidates = filterByModelScore(candidates, invoiceModel);
+  const invoiceCcDigits = getInvoiceCcDigits(invoiceModel, cc);
+  let candidates = getCcFilteredModels(models, invoiceCcDigits);
+  candidates = filterByModelScore(candidates, invoiceModel, invoiceCcDigits);
 
   if (!candidates.length) {
     return [];
@@ -335,26 +353,22 @@ const fetchModels = async (
   const replacements = { oem };
   let sql = `SELECT * FROM ${tableName} WHERE make = :oem`;
   const modelClauses = [];
+  const modelSearchName = getAlphaModelName(model) || model;
 
   if (useModelKeywordSearch) {
-    const { alpha, digits } = getModelSearchKeywords(model);
+    const { alpha } = getModelSearchKeywords(model);
 
     alpha.forEach((keyword, index) => {
       replacements[`mka${index}`] = `%${keyword}%`;
       modelClauses.push(`model LIKE :mka${index}`);
     });
 
-    digits.forEach((digit, index) => {
-      replacements[`mkd${index}`] = `%${digit}%`;
-      modelClauses.push(`model LIKE :mkd${index}`);
-    });
-
     if (!modelClauses.length) {
-      replacements.model = `%${model}%`;
+      replacements.model = `%${modelSearchName}%`;
       modelClauses.push('model LIKE :model');
     }
   } else {
-    replacements.model = `%${model}%`;
+    replacements.model = `%${modelSearchName}%`;
     modelClauses.push('model LIKE :model');
   }
 
@@ -372,7 +386,7 @@ const fetchModels = async (
   if (ccDigits) {
     replacements.cc = `%${ccDigits}%`;
     searchClauses.push('variant LIKE :cc');
-    searchClauses.push('model LIKE :cc');
+    searchClauses.push('cc LIKE :cc');
   }
 
   if (searchClauses.length) {
@@ -448,7 +462,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     const tableName = `${insurer}_models${insurer === 'national' ? '_NF' : ''}`;
     let useModelMatch = isStandardVariant(variant);
     const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
-    const ccDigits = getCcDigits(cc);
+    const ccDigits = getInvoiceCcDigits(model, cc);
 
     let { models, usedModelKeywordFallback } = await fetchModelsWithFallback(
       tableName,
@@ -544,7 +558,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
       usedModelKeywordFallback,
       cc,
       variantKeywords,
-      modelKeywords: getKeywords(model),
+      modelKeywords: getModelSearchKeywords(model).alpha,
       isIdvRangeRequired,
       targetIdv,
       closestModel: closestModel
