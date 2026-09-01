@@ -3,13 +3,17 @@ import {
   extractionTemplateKTM,
   extractionTemplateHONDA,
   extractionTemplateBAJAJ,
+  extractionTemplateHERO,
   extractionTemplateTVS
 } from './templates.js';
+import { normalizeModelName } from './normalizeModelName.js';
 
 const OEM_TEMPLATES = {
   KTM: extractionTemplateKTM,
   HONDA: extractionTemplateHONDA,
   BAJAJ: extractionTemplateBAJAJ,
+  HERO: extractionTemplateHERO,
+  'HERO MOTOCORP': extractionTemplateHERO,
   TVS: extractionTemplateTVS
 };
 
@@ -188,6 +192,75 @@ const normalizeCc = (value) => {
   return match ? match[1] : null;
 };
 
+const HERO_OEMS = new Set(['HERO', 'HERO MOTOCORP']);
+
+const COLOR_SUFFIX_WORDS = new Set([
+  'BLUE', 'GREY', 'GRAY', 'RED', 'BLACK', 'WHITE', 'SILVER', 'GREEN',
+  'YELLOW', 'ORANGE', 'BROWN', 'GOLD', 'METALLIC'
+]);
+
+const MULTI_WORD_COLOR_PREFIXES = new Set(['GUN', 'DARK', 'LIGHT', 'PEARL']);
+
+const getHeroColorWordCount = (words) => {
+  if (words.length < 2 || !COLOR_SUFFIX_WORDS.has(words[words.length - 1])) {
+    return 0;
+  }
+
+  const w2 = words[words.length - 2];
+
+  if (words.length >= 3 && w2 === 'MET' && MULTI_WORD_COLOR_PREFIXES.has(words[words.length - 3])) {
+    return 3;
+  }
+
+  return 2;
+};
+
+const extractHeroDescriptionLine = (text) => {
+  const match = text.match(
+    /^\d+\.\s+.+\s+PC\s+[A-Z0-9]+\s+[A-Z0-9]{17}[\s\S]*?\n([^\n]+)\s*\n(?:Sub Total|Taxable Value)/im
+  );
+
+  return match?.[1]?.trim() || null;
+};
+
+const extractHeroVariant = (text, model) => {
+  const descriptionLine = extractHeroDescriptionLine(text);
+
+  if (!descriptionLine || !model || !descriptionLine.startsWith(model)) {
+    return null;
+  }
+
+  const remainder = descriptionLine.slice(model.length).trim();
+  const words = remainder.split(/\s+/);
+
+  if (!words.length) {
+    return null;
+  }
+
+  let colorWordCount = getHeroColorWordCount(words);
+
+  if (colorWordCount >= words.length) {
+    return null;
+  }
+
+  return words.slice(0, words.length - colorWordCount).join(' ') || null;
+};
+
+const extractHeroCc = (model, rawCc) => {
+  if (rawCc) {
+    return rawCc;
+  }
+
+  if (!model) {
+    return null;
+  }
+
+  const match = model.match(/(?:^|\s)(\d{2,3})(?:\s|$)/);
+  return match?.[1] || null;
+};
+
+const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
+
 const normalizeMobile = (value) => {
   if (!value) {
     return null;
@@ -201,6 +274,11 @@ const normalizeMobile = (value) => {
 const enrichExtractedData = (text, oem, raw) => {
   const { customerName, relation } = extractCustomerIdentity(text, raw.customerName);
   const { firstName, lastName } = splitFirstLastName(customerName, relation);
+  const model = normalizeModelName(raw.model);
+  const variant = isHeroOem(oem)
+    ? extractHeroVariant(text, raw.model) || raw.variant
+    : raw.variant;
+  const ccSource = isHeroOem(oem) ? extractHeroCc(raw.model, null) : raw.cc;
 
   return {
     make: oem?.toUpperCase() || null,
@@ -214,10 +292,10 @@ const enrichExtractedData = (text, oem, raw) => {
     hypothecation: sanitizeHypothecation(raw.hypothecation),
     chassisNo: raw.chassisNo,
     engineNo: raw.engineNo,
-    model: raw.model,
-    variant: raw.variant,
+    model,
+    variant,
     exshowroom: raw.exshowroom,
-    cc: normalizeCc(raw.cc)
+    cc: normalizeCc(ccSource)
   };
 };
 

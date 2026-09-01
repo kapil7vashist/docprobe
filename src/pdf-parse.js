@@ -11,13 +11,13 @@ import getFinancerName from '../helpers/getFinancerName.js';
 const getPdfBuffer = async (oem, base64String) => {
   const hasBase64 = base64String && String(base64String).trim();
 
-  if (hasBase64) {
-    const base64Data = base64String.replace(/^data:application\/pdf;base64,/, '');
-    return Buffer.from(base64Data, 'base64');
-  }
+  // if (hasBase64) {
+  //   const base64Data = base64String.replace(/^data:application\/pdf;base64,/, '');
+  //   return Buffer.from(base64Data, 'base64');
+  // }
 
   if (ENV === 'development') {
-    return readFile(path.join(process.cwd(), 'tmp', `${oem} NEW.pdf`));
+    return readFile(path.join(process.cwd(), 'tmp', `${oem} BIKE.pdf`));
   }
 
   return null;

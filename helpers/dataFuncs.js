@@ -1,5 +1,8 @@
 import { Sequelize } from 'sequelize';
 import { dbConnection } from '../index.js';
+import getInsurerMake from './getInsurerMake.js';
+import { VARIANT_IN_MODEL_INSURERS } from '../utils/constants.js';
+import { normalizeModelName, splitInvoiceModelVariant } from './normalizeModelName.js';
 
 const normalizeText = (value) =>
   String(value || '')
@@ -37,11 +40,18 @@ const levenshteinDistance = (a, b) => {
   return rows[a.length][b.length];
 };
 
-const getKeywords = (value) =>
-  String(value || '')
-    .toUpperCase()
+const getKeywords = (value) => {
+  const normalized = normalizeModelName(String(value || '')).toUpperCase();
+  const versionKeywords = (normalized.match(/\d+\.\d+/g) || []).map((token) =>
+    token.replace('.', '')
+  );
+  const wordKeywords = normalized
+    .replace(/\d+\.\d+/g, ' ')
     .split(/[^A-Z0-9]+/)
     .filter((keyword) => keyword.length > 1);
+
+  return [...new Set([...wordKeywords, ...versionKeywords])];
+};
 
 const getVariantKeywords = getKeywords;
 
@@ -83,6 +93,10 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
     if (matchedCount > 0) {
       scores.push(0.5 + (0.5 * (matchedCount / invoiceKeywords.length)));
     }
+  }
+
+  if (invoice.startsWith(candidate) && candidate.length >= 4) {
+    scores.push(0.92);
   }
 
   if (invoice.includes(candidate) || candidate.includes(invoice)) {
@@ -197,7 +211,12 @@ const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null) => 
   );
 
   if (alpha.length && extraDbTokens.length) {
-    score = Math.min(score, 0.4);
+    const invoiceNorm = normalizeText(invoiceModel);
+    const dbNorm = normalizeText(dbModel);
+
+    if (!dbNorm.startsWith(invoiceNorm)) {
+      score = Math.min(score, 0.4);
+    }
   }
 
   return score;
@@ -317,7 +336,7 @@ const findClosestByModel = (models, invoiceModel, cc) => {
   return takeTopMatches(ranked);
 };
 
-const findClosestVariant = (models, invoiceVariant, invoiceModel, cc) => {
+const findClosestVariant = (models, invoiceVariant, invoiceModel, cc, variantInModel = false) => {
   if (!models.length) {
     return [];
   }
@@ -333,7 +352,8 @@ const findClosestVariant = (models, invoiceVariant, invoiceModel, cc) => {
   const ranked = [];
 
   for (const current of candidates) {
-    const score = invoiceVariant ? getVariantScore(invoiceVariant, current.variant) : 0;
+    const dbVariantValue = variantInModel ? current.model : current.variant;
+    const score = invoiceVariant ? getVariantScore(invoiceVariant, dbVariantValue) : 0;
     ranked.push({ ...current, matchScore: score, matchBy: 'variant' });
   }
 
@@ -348,7 +368,8 @@ const fetchModels = async (
   variantKeywords,
   ccDigits,
   applyVariantFilter,
-  useModelKeywordSearch = false
+  useModelKeywordSearch = false,
+  variantInModel = false
 ) => {
   const replacements = { oem };
   let sql = `SELECT * FROM ${tableName} WHERE make = :oem`;
@@ -379,12 +400,15 @@ const fetchModels = async (
   if (applyVariantFilter && variantKeywords.length > 1) {
     variantKeywords.forEach((keyword, index) => {
       replacements[`kw${index}`] = `%${keyword}%`;
-      searchClauses.push(`variant LIKE :kw${index}`);
+      searchClauses.push(`${variantInModel ? 'model' : 'variant'} LIKE :kw${index}`);
     });
   }
 
   if (ccDigits) {
     replacements.cc = `%${ccDigits}%`;
+    if (variantInModel) {
+      searchClauses.push('model LIKE :cc');
+    }
     searchClauses.push('variant LIKE :cc');
     searchClauses.push('cc LIKE :cc');
   }
@@ -405,7 +429,8 @@ const fetchModelsWithFallback = async (
   model,
   variantKeywords,
   ccDigits,
-  applyVariantFilter
+  applyVariantFilter,
+  variantInModel = false
 ) => {
   let models = await fetchModels(
     tableName,
@@ -414,7 +439,8 @@ const fetchModelsWithFallback = async (
     variantKeywords,
     ccDigits,
     applyVariantFilter,
-    false
+    false,
+    variantInModel
   );
 
   if (models.length) {
@@ -428,7 +454,8 @@ const fetchModelsWithFallback = async (
     variantKeywords,
     ccDigits,
     applyVariantFilter,
-    true
+    true,
+    variantInModel
   );
 
   return {
@@ -459,18 +486,26 @@ const hasUsableMatch = (matches) =>
 
 export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRequired, exshowroom, cc) => {
   try {
+    model = normalizeModelName(model);
+    const { baseModel, combinedVariant } = splitInvoiceModelVariant(model, variant);
+    model = baseModel;
+    variant = combinedVariant;
+    const insurerKey = String(insurer || '').toLowerCase().trim();
     const tableName = `${insurer}_models${insurer === 'national' ? '_NF' : ''}`;
+    const insurerMake = getInsurerMake(oem, insurer);
+    const variantInModel = VARIANT_IN_MODEL_INSURERS.includes(insurerKey);
     let useModelMatch = isStandardVariant(variant);
     const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
     const ccDigits = getInvoiceCcDigits(model, cc);
 
     let { models, usedModelKeywordFallback } = await fetchModelsWithFallback(
       tableName,
-      oem,
+      insurerMake,
       model,
       variantKeywords,
       ccDigits,
-      !useModelMatch
+      !useModelMatch,
+      variantInModel
     );
 
     const exshowroomAmount = parseAmount(exshowroom);
@@ -478,7 +513,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
 
     let topMatches = useModelMatch
       ? findClosestByModel(models, model, cc)
-      : findClosestVariant(models, variant, model, cc);
+      : findClosestVariant(models, variant, model, cc, variantInModel);
 
     let usedModelMatchFallback = false;
 
@@ -487,11 +522,12 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
       usedModelMatchFallback = true;
       ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
         tableName,
-        oem,
+        insurerMake,
         model,
         variantKeywords,
         ccDigits,
-        false
+        false,
+        variantInModel
       ));
       topMatches = findClosestByModel(models, model, cc);
     }
@@ -552,6 +588,9 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     }));
 
     console.log({
+      oem,
+      insurerMake,
+      variantInModel,
       invoiceVariant: variant,
       useModelMatch,
       usedModelMatchFallback,

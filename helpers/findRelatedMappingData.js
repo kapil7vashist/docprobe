@@ -1,5 +1,6 @@
 import { NON_IDV_OEM, FINANCER_OEM } from '../utils/constants.js';
 import { getModelVariant } from './dataFuncs.js';
+import getInsurerMake from './getInsurerMake.js';
 
 const findRelatedMappingData = async (oem, model, variant, insurer, hypothecation, exshowroom, cc) => {
   try {
@@ -10,7 +11,7 @@ const findRelatedMappingData = async (oem, model, variant, insurer, hypothecatio
     const isHypothecationMappingRequired = Boolean(hypothecation) && FINANCER_OEM.includes(insurerKey);
 
     // Search Related model variant connectin from the Database
-    console.log({ oem, model, variant, insurer, insurerKey, hypothecation, isHypothecationMappingRequired, isIdvRangeRequired, NON_IDV_OEM });
+    console.log({ oem, model, variant, insurer, insurerKey, insurerMake: getInsurerMake(oem, insurerKey), hypothecation, isHypothecationMappingRequired, isIdvRangeRequired, NON_IDV_OEM });
 
     const result = await getModelVariant(oem, model, variant, insurer, isIdvRangeRequired, exshowroom, cc);
     return result;

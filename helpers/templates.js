@@ -252,6 +252,50 @@ export const extractionTemplateBAJAJ = {
   ]
 };
 
+export const extractionTemplateHERO = {
+  customerName: [
+    /Name of the Customer\s+([A-Z][A-Z\s]+?)\s+Date/i
+  ],
+
+  customerAddress: [
+    /Address\s+([\s\S]*?)\nState Code\s+\d+/i
+  ],
+
+  pincode: [
+    /Address[\s\S]*?\n(\d{6})\s*\nState Code/i
+  ],
+
+  customerMobile: [
+    /Mobile\s*#\s*(\d{10})/i
+  ],
+
+  hypothecation: [
+    /Hypothecation with\s+([^\n]+)/i
+  ],
+
+  chassisNo: [
+    /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})/im,
+    /Engine#\s*Chassis\s*#[\s\S]*?\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]+\s+\d+\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})/i
+  ],
+
+  engineNo: [
+    /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/im,
+    /Engine#\s*Chassis\s*#[\s\S]*?\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]+\s+\d+\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/i
+  ],
+
+  model: [
+    /^\d+\.\s+(.+?)\s+[A-Z0-9]{8,}\s+[A-Z]{2,4}\s+\d{8}\s+PC/im
+  ],
+
+  cc: [],
+
+  variant: [],
+
+  exshowroom: [
+    /Ex\s*Showroom\s*Price\s+([\d,]+\.\d+)/i
+  ]
+};
+
 export const extractionTemplateTVS = {
   customerName: [
     /Vehicle Invoice[^\n]+\n[^\t]+\t([^\n\r\t]+)/i
