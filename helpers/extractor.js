@@ -137,6 +137,9 @@ const sanitizeAddress = (value) => {
   return cleaned || null;
 };
 
+const isRelationFieldLabel = (value) =>
+  /^(Customer\s*GSTIN|Phone|Aadhar|Bill\s*To|Institution|GSTIN|Mobile|Email|Hypothecated|H\.?P\.?Name)\b/i.test(value);
+
 const normalizeRelation = (value) => {
   if (!value) {
     return null;
@@ -144,7 +147,11 @@ const normalizeRelation = (value) => {
 
   const cleaned = value.trim().replace(/\s+/g, ' ');
 
-  if (!cleaned) {
+  if (!cleaned || isRelationFieldLabel(cleaned)) {
+    return null;
+  }
+
+  if (/^(S\/O|W\/O|D\/O|C\/O|S\/W\/D)\s*:?\s*$/i.test(cleaned)) {
     return null;
   }
 
@@ -194,8 +201,8 @@ const extractCustomerIdentity = (text, customerName) => {
   let name = customerName;
 
   const dedicatedRelation = extractField(text, [
-    /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:\s*([^\n\r]+)/i,
-    /S\/W\/D\s*:?\s*([^\n\r\t]+)/i
+    /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:[ \t]*([^\n\r]*)/i,
+    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i
   ]);
 
   let relation = normalizeRelation(dedicatedRelation);

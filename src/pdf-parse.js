@@ -17,7 +17,7 @@ const getPdfBuffer = async (oem, base64String) => {
   }
 
   if (ENV === 'development') {
-    return readFile(path.join(process.cwd(), 'tmp', `${oem} INVOICE EV2.pdf`));
+    return readFile(path.join(process.cwd(), 'tmp', `${oem} INVOICE.pdf`));
   }
 
   return null;
