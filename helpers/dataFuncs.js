@@ -406,9 +406,7 @@ const fetchModels = async (
 
   if (ccDigits) {
     replacements.cc = `%${ccDigits}%`;
-    if (variantInModel) {
-      searchClauses.push('model LIKE :cc');
-    }
+    searchClauses.push('model LIKE :cc');
     searchClauses.push('variant LIKE :cc');
     searchClauses.push('cc LIKE :cc');
   }

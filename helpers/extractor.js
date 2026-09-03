@@ -114,7 +114,27 @@ const sanitizeHypothecation = (value) => {
     return null;
   }
 
+  if (/^branch address\b/i.test(cleaned) || /^original for recipient$/i.test(cleaned)) {
+    return null;
+  }
+
   return cleaned;
+};
+
+const sanitizeAddress = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const cleaned = String(value)
+    .replace(/\s*\[State Code\s*:\s*\d+\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/,(?:\s*,)+/g, ',')
+    .replace(/^,\s*|\s*,$/g, '')
+    .trim();
+
+  return cleaned || null;
 };
 
 const normalizeRelation = (value) => {
@@ -155,6 +175,21 @@ const splitFirstLastName = (customerName, relation) => {
   };
 };
 
+const stripSalutation = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const salutation = /^(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sri|Smt|Shri|Shree|Kumari|Km|Master|Mx)\.?\s+/i;
+  let name = String(value).trim().replace(/\s+/g, ' ');
+
+  while (salutation.test(name)) {
+    name = name.replace(salutation, '').trim();
+  }
+
+  return name || null;
+};
+
 const extractCustomerIdentity = (text, customerName) => {
   let name = customerName;
 
@@ -176,6 +211,8 @@ const extractCustomerIdentity = (text, customerName) => {
     }
   }
 
+  name = stripSalutation(name);
+
   return {
     customerName: name || null,
     relation: relation || null
@@ -187,9 +224,17 @@ const normalizeCc = (value) => {
     return null;
   }
 
+  const text = String(value);
+
   // Prefer whole CC digits, e.g. 109.51 -> 109, 110 -> 110
-  const match = String(value).match(/(\d{2,4})/);
-  return match ? match[1] : null;
+  const whole = text.match(/(\d{2,4})/);
+  if (whole) {
+    return whole[1];
+  }
+
+  // Chetak / EV battery capacity, e.g. 3.5 kWh -> 3.5
+  const decimal = text.match(/(\d+\.\d+)/);
+  return decimal ? decimal[1] : null;
 };
 
 const HERO_OEMS = new Set(['HERO', 'HERO MOTOCORP']);
@@ -261,6 +306,64 @@ const extractHeroCc = (model, rawCc) => {
 
 const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
+const CLUBBED_VARIANT_OEMS = new Set(['BAJAJ', 'KTM']);
+
+const isClubbedVariantOem = (oem) => CLUBBED_VARIANT_OEMS.has(oem?.toUpperCase());
+
+const isChetakModel = (model, text) =>
+  /\bCHETAK\b/i.test(model || '') || /chetak-india\.com/i.test(text || '');
+
+// Chetak invoices club variant into the model with no engine CC
+// e.g. "CHETAK C35 01" → model "CHETAK", variant "C3501"
+const splitChetakModelVariant = (model) => {
+  const normalized = normalizeModelName(model);
+
+  if (!normalized) {
+    return { model: null, variant: null };
+  }
+
+  const match = normalized.match(/^CHETAK(?:\s+(.+))?$/i);
+
+  if (!match) {
+    return { model: normalized, variant: null };
+  }
+
+  let variant = match[1]?.trim() || null;
+  const compact = variant?.match(/^C(\d{2})\s+(\d{2})$/i);
+
+  if (compact) {
+    variant = `C${compact[1]}${compact[2]}`;
+  }
+
+  return {
+    model: 'CHETAK',
+    variant
+  };
+};
+
+// Bajaj/KTM invoices have no Variant field — it is clubbed into the model
+// e.g. "PLATINA 100 ES DRUM" → model "PLATINA 100", variant "ES DRUM"
+// e.g. "Duke 160 Pro" → model "Duke 160", variant "Pro"
+const splitClubbedModelVariant = (model) => {
+  const normalized = normalizeModelName(model);
+
+  if (!normalized) {
+    return { model: null, variant: null, cc: null };
+  }
+
+  const match = normalized.match(/^(.+?\s+(\d{2,3}))(?:\s+(.+))?$/);
+
+  if (!match) {
+    return { model: normalized, variant: null, cc: null };
+  }
+
+  return {
+    model: match[1].trim(),
+    variant: match[3]?.trim() || null,
+    cc: match[2]
+  };
+};
+
 const normalizeMobile = (value) => {
   if (!value) {
     return null;
@@ -274,11 +377,24 @@ const normalizeMobile = (value) => {
 const enrichExtractedData = (text, oem, raw) => {
   const { customerName, relation } = extractCustomerIdentity(text, raw.customerName);
   const { firstName, lastName } = splitFirstLastName(customerName, relation);
-  const model = normalizeModelName(raw.model);
-  const variant = isHeroOem(oem)
-    ? extractHeroVariant(text, raw.model) || raw.variant
-    : raw.variant;
-  const ccSource = isHeroOem(oem) ? extractHeroCc(raw.model, null) : raw.cc;
+  let model = normalizeModelName(raw.model);
+  let variant = raw.variant;
+  let ccSource = raw.cc;
+
+  if (isHeroOem(oem)) {
+    variant = extractHeroVariant(text, raw.model) || variant;
+    ccSource = extractHeroCc(raw.model, null);
+  } else if (isChetakModel(raw.model, text)) {
+    const split = splitChetakModelVariant(raw.model);
+    model = split.model;
+    variant = variant || split.variant;
+    ccSource = raw.cc;
+  } else if (isClubbedVariantOem(oem)) {
+    const split = splitClubbedModelVariant(raw.model);
+    model = split.model;
+    variant = variant || split.variant;
+    ccSource = ccSource || split.cc;
+  }
 
   return {
     make: oem?.toUpperCase() || null,
@@ -286,7 +402,7 @@ const enrichExtractedData = (text, oem, raw) => {
     firstName,
     lastName,
     relation,
-    customerAddress: raw.customerAddress,
+    customerAddress: sanitizeAddress(raw.customerAddress),
     customerMobile: normalizeMobile(raw.customerMobile),
     pincode: raw.pincode,
     hypothecation: sanitizeHypothecation(raw.hypothecation),

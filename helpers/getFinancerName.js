@@ -99,7 +99,73 @@ const buildFinancerDetails = ({ hypothecation, name, matchScore = null, isMapped
   };
 };
 
-const getFinancerName = async (insurer, hypothecation) => {
+const getLocationTerms = (rtoDetails) => ({
+  city: String(rtoDetails?.city || '').trim(),
+  state: String(rtoDetails?.state || '').trim()
+});
+
+const getLocationRank = (financerName, city, state) => {
+  const haystack = normalizeText(financerName);
+  const cityNorm = normalizeText(city);
+  const stateNorm = normalizeText(state);
+
+  if (cityNorm.length >= 3 && haystack.includes(cityNorm)) {
+    return 2;
+  }
+
+  if (stateNorm.length >= 3 && haystack.includes(stateNorm)) {
+    return 1;
+  }
+
+  return 0;
+};
+
+const GENERIC_FINANCER_KEYWORDS = new Set([
+  'LTD', 'LIMITED', 'PVT', 'PRIVATE', 'THE', 'AND', 'CO', 'OF'
+]);
+
+const getSearchKeywords = (keywords) => {
+  const significant = keywords.filter(
+    (keyword) => keyword.length > 2 && !GENERIC_FINANCER_KEYWORDS.has(keyword)
+  );
+
+  return significant.length ? significant : keywords;
+};
+
+const fetchFinancers = async (insurerKey, keywords, city, state, requireLocation, matchAllKeywords = false) => {
+  const replacements = {};
+  const searchClauses = keywords.map((keyword, index) => {
+    replacements[`kw${index}`] = `%${keyword}%`;
+    return `name LIKE :kw${index}`;
+  });
+
+  let sql = `SELECT * FROM ${insurerKey}_financers WHERE (${searchClauses.join(matchAllKeywords ? ' AND ' : ' OR ')})`;
+
+  if (requireLocation) {
+    const locationClauses = [];
+
+    if (city.length >= 3) {
+      replacements.city = `%${city}%`;
+      locationClauses.push('name LIKE :city');
+    }
+
+    if (state.length >= 3) {
+      replacements.state = `%${state}%`;
+      locationClauses.push('name LIKE :state');
+    }
+
+    if (locationClauses.length) {
+      sql += ` AND (${locationClauses.join(' OR ')})`;
+    }
+  }
+
+  return (await dbConnection.query(sql, {
+    replacements,
+    type: Sequelize.QueryTypes.SELECT
+  })) || [];
+};
+
+const getFinancerName = async (insurer, hypothecation, rtoDetails = null) => {
   try {
     const insurerKey = String(insurer || '').toLowerCase().trim();
 
@@ -125,17 +191,25 @@ const getFinancerName = async (insurer, hypothecation) => {
       });
     }
 
-    const replacements = {};
-    const searchClauses = keywords.map((keyword, index) => {
-      replacements[`kw${index}`] = `%${keyword}%`;
-      return `name LIKE :kw${index}`;
-    });
+    const { city, state } = getLocationTerms(rtoDetails);
+    const useLocation = insurerKey === 'united' && (city.length >= 3 || state.length >= 3);
 
-    const sql = `SELECT * FROM ${insurerKey}_financers WHERE ${searchClauses.join(' OR ')}`;
-    const candidates = (await dbConnection.query(sql, {
-      replacements,
-      type: Sequelize.QueryTypes.SELECT
-    })) || [];
+    let candidates = [];
+
+    if (useLocation) {
+      candidates = await fetchFinancers(
+        insurerKey,
+        getSearchKeywords(keywords),
+        city,
+        state,
+        true,
+        true
+      );
+    }
+
+    if (!candidates.length) {
+      candidates = await fetchFinancers(insurerKey, keywords, city, state, false);
+    }
 
     if (!candidates.length) {
       return buildFinancerDetails({
@@ -147,15 +221,23 @@ const getFinancerName = async (insurer, hypothecation) => {
 
     const ranked = candidates.map((row) => ({
       ...row,
-      matchScore: getFinancerScore(hypothecation, row.name)
+      matchScore: getFinancerScore(hypothecation, row.name),
+      locationRank: useLocation ? getLocationRank(row.name, city, state) : 0
     }));
 
-    ranked.sort((a, b) => b.matchScore - a.matchScore);
+    ranked.sort((a, b) => {
+      if (b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+
+      return b.locationRank - a.locationRank;
+    });
 
     const best = ranked[0];
+    const { locationRank: _locationRank, ...bestRow } = best;
 
     return buildFinancerDetails({
-      ...best,
+      ...bestRow,
       hypothecation,
       name: best.name,
       matchScore: best.matchScore,

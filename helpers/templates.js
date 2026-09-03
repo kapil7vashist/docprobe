@@ -33,7 +33,7 @@ export const extractionTemplates = {
   hypothecation: [
     /Hypothecation with\s*(.*?)\s*,/i,
     /H\.?P\.?Name\s*:\s*([^\n\r]+)/i,
-    /Hypothecated\s*to\s*:?\s*([^\n\r]+)/i,
+    /Hypothecated\s*to\s*:[ \t]*([^\n\r]*)/i,
     /H\.?P\.?Name\s*:?\s*([^\n\r]+)/i,
     /Hypothecation\s*With\s*:?\s*([^\n\r]+)/i,
     /hypothecation\s*in\s*favour\s*of\s*([^\n\r]+)/i,
@@ -72,6 +72,7 @@ export const extractionTemplates = {
   exshowroom: [
     /Ex[\s-]*Showroom[\s-]*Price(?:\s*\(Rs\.?\))?\s*([\d,]+\.\d+)/i,
     /Total\s*Amount\s*([\d,]+\.\d+)/i,
+    /Grand\s*Total\s*([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+)/i,
     /Net\s*Total\s*([\d,]+\.\d+)/i
   ]
@@ -118,6 +119,7 @@ export const extractionTemplateKTM = {
 
   exshowroom: [
     /Total\s*Amount\s*([\d,]+\.?\d*)/i,
+    /Grand\s*Total\s*([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+)/i
   ]
 };
@@ -208,20 +210,30 @@ export const extractionTemplateHONDA = {
 
 export const extractionTemplateBAJAJ = {
   customerName: [
+    /Customer\s*Name\s*\/\s*Institution Name\s*:\s*([^\n\r(]+)/i,
+    /Institution Name\s*:\s*([^\n\r(]+)/i,
     /Customer\s*Name\s*:\s*([^\n\r(]+)/i
   ],
 
+  customerMobile: [
+    /Customer\s*Phone\s*:\s*(\d{10})/i,
+    /Customer\s*Name[\s\S]*?Phone\s*:\s*(\d{10})/i
+  ],
+
   customerAddress: [
+    /Bill\s*To\s*Address\s*:[\s\S]*?Email\s*:[^\n]+\n([\s\S]*?)\s*Delivery\s*Address\s*:/i,
     /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Delivery\s*Address\s*:/i
   ],
 
   pincode: [
+    /Bill\s*To\s*Address[\s\S]*?(\d{6})\s*\n[A-Za-z]+\s*\[State Code/i,
     /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i
   ],
 
   hypothecation: [
-    /Hypothecated[\s\S]*?to\s*:\s*([^\n\r]+)/i,
-    /Hypothecated\s*to\s*:\s*([^\n\r]+)/i
+    /H\.?P\.?Name\s*:[ \t]*([^\n\r]*)/i,
+    /Hypothecated[\s\S]*?to\s*:[ \t]*([^\n\r]*)/i,
+    /Hypothecated\s*to\s*:[ \t]*([^\n\r]*)/i
   ],
 
   chassisNo: [
@@ -230,11 +242,13 @@ export const extractionTemplateBAJAJ = {
   ],
 
   engineNo: [
+    /Motor\s*No\.?\s*:\s*([A-Z0-9]+)/i,
     /Engine\s*:\s*([A-Z0-9\-*]+)/i,
     /Engine\s*No\.?\s*:\s*([A-Z0-9\-*]+)/i
   ],
 
   model: [
+    /\d+\s+(CHETAK(?:\s+[A-Z0-9]+)+)\s*\/\s*\d{8}/i,
     /Model:\s*([^\n\r]+)/i,
     /\d+\s+[A-Z0-9]+\s+((?:[^\n\/]|\n(?=[A-Z]+\s*\/))+?)\s*\/\s*\d{8}/is,
     /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i
@@ -248,7 +262,12 @@ export const extractionTemplateBAJAJ = {
 
   exshowroom: [
     /Total\s*Amount\s*([\d,]+\.?\d*)/i,
+    /Grand\s*Total\s*([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+)/i
+  ],
+
+  cc: [
+    /Battery\s*Capacity\s*:\s*([\d.]+)\s*kWh/i
   ]
 };
 
