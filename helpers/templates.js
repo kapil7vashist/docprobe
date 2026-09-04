@@ -48,11 +48,11 @@ export const extractionTemplates = {
   ],
 
   engineNo: [
-    /Engine\s*:\s*([A-Z0-9\-*]+)/i,
-    /Engine No\.?\s*[:\-]?\s*([A-Z0-9]+)/i,
-    /Motor no\.?\s*[:\-]?\s*([A-Z0-9]+)/i,
-    /Engine number.*?:\s*([A-Z0-9]+)/i,
-    /Engine\s*No\s*([A-Z0-9]+)/i
+    /Engine\s*:[ \t]*([A-Z0-9\-*]+)/i,
+    /Engine No\.?\s*[:\-]?[ \t]*([A-Z0-9]+)/i,
+    /Motor no\.?\s*[:\-]?[ \t]*([A-Z0-9]+)/i,
+    /Engine number.*?:[ \t]*([A-Z0-9]+)/i,
+    /Engine\s*No[ \t]+([A-Z0-9]+)/i
   ],
 
   model: [
@@ -79,36 +79,87 @@ export const extractionTemplates = {
 
 };
 
+// Shared Khivraj dealer layout (BAJAJ / TRIUMPH / CHETAK / some KTM)
+const khivrajProductBlock = {
+  model: [
+    /Engine\s*No\s*:\s*\n([^\n\r]+)/i
+  ],
+  chassisNo: [
+    /Engine\s*No\s*:\s*\n[^\n]+\n[^\n]+\n([A-Z0-9]{17})/i
+  ],
+  engineNo: [
+    /Engine\s*No\s*:\s*\n[^\n]+\n[^\n]+\n[A-Z0-9]{17}\n([A-Z0-9\-*]+)/i
+  ],
+  customerName: [
+    /Email\s*:\s*\n([^\n\r]+)/i
+  ],
+  customerAddress: [
+    /Email\s*:\s*\n[^\n]+\n([\s\S]*?)\s+\d{6}\s*\n\(M\)/i
+  ],
+  pincode: [
+    /Email\s*:\s*\n[^\n]+\n[\s\S]*?\s+(\d{6})\s*\n\(M\)/i
+  ],
+  customerMobile: [
+    /\(M\)-?(\d{10})/i
+  ],
+  hypothecation: [
+    /Hypothecated\s*To\s*:[ \t]*([^\n\r]+)/i,
+    /\n([A-Z][A-Z0-9 ,.]*\b(?:BANK|FINANCE|CREDIT)\b[A-Z0-9 ,.]*)\s*\nDownload\s+or\s+Visit/i
+  ],
+  exshowroom: [
+    /([\d,]+\.\d{2})\n(?:One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ninety|Hundred)/i,
+    /Net\s*Total[\s\S]*?([\d,]+\.\d{2})\n(?:One|Two|Three|Four|Five|Six|Seven|Eight|Nine)/i
+  ]
+};
+
 export const extractionTemplateKTM = {
   customerName: [
-    /Customer\s*Name\s*:\s*([^\n\r(]+)/i
+    /Customer\s*Name\s*:\s*([^\n\r(]+)/i,
+    /VIN\s*No\s*(?::\s*)*\n([^\n\r]+)/i,
+    ...khivrajProductBlock.customerName
   ],
 
   customerAddress: [
-    /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Place\s*of\s*Supply\s*:/i
+    /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Place\s*of\s*Supply\s*:/i,
+    /VIN\s*No[\s:]*\n[^\n]+\n([\s\S]*?)\s+\d{6}\s*\n\(M\)/i,
+    ...khivrajProductBlock.customerAddress
   ],
 
   pincode: [
-    /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i
+    /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i,
+    /VIN\s*No[\s:]*\n[^\n]+\n[\s\S]*?\s+(\d{6})\s*\n\(M\)/i,
+    /Pin\s*:?\s*\n(?:\s*:\s*\n)*[^\n]+\n[\s\S]*?\n(\d{6})\s*\n\(M\)/i,
+    ...khivrajProductBlock.pincode
+  ],
+
+  customerMobile: [
+    /\(M\)-?(\d{10})/i,
+    /Phone\s*:\s*(\d{10})/i
   ],
 
   hypothecation: [
-    /H\.?P\.?Name\s*:\s*([^\n\r]+)/i
+    /H\.?P\.?Name\s*:[ \t]*([^\n\r]*)/i,
+    ...khivrajProductBlock.hypothecation
   ],
 
   chassisNo: [
     /Chassis\s*No\.?\s*:\s*([A-Z0-9]{17})/i,
-    /Chassis\s*No\.?\s*:\s*([A-Z0-9]+)/i
+    /VIN\s*No[\s:]*\n[^\n]+\n[\s\S]*?\(M\)[^\n]*\n[A-Z0-9\-*]+\n([A-Z0-9]{17})/i,
+    ...khivrajProductBlock.chassisNo
   ],
 
   engineNo: [
-    /Engine\s*:\s*([A-Z0-9\-*]+)/i,
-    /Engine\s*No\.?\s*:\s*([A-Z0-9\-*]+)/i
+    /Engine\s*:[ \t]*([A-Z0-9\-*]+)/i,
+    /VIN\s*No[\s:]*\n[^\n]+\n[\s\S]*?\(M\)[^\n]*\n([A-Z0-9\-*]+)/i,
+    ...khivrajProductBlock.engineNo
   ],
 
   model: [
     /\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i,
-    /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i
+    /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i,
+    /Model\s*\nColor\s*\n[^\n]*\n[^\n]*\n([^\n]+)/i,
+    /SIBK[A-Z0-9]+\nIRN[^\n]*\n([^\n]+)/i,
+    ...khivrajProductBlock.model
   ],
 
   variant: [
@@ -120,7 +171,10 @@ export const extractionTemplateKTM = {
   exshowroom: [
     /Total\s*Amount\s*([\d,]+\.?\d*)/i,
     /Grand\s*Total\s*([\d,]+\.?\d*)/i,
-    /Total\s*Amount\s*([\d,]+)/i
+    /Total\s*Amount\s*([\d,]+)/i,
+    ...khivrajProductBlock.exshowroom,
+    // Khivraj registration invoice: "Total 68011.46 1277.54 69289.00"
+    /(?:^|\n)Total\s+[\d,]+\.\d+\s+[\d,]+\.\d+\s+([\d,]+\.\d+)/i
   ]
 };
 
@@ -212,46 +266,53 @@ export const extractionTemplateBAJAJ = {
   customerName: [
     /Customer\s*Name\s*\/\s*Institution Name\s*:\s*([^\n\r(]+)/i,
     /Institution Name\s*:\s*([^\n\r(]+)/i,
-    /Customer\s*Name\s*:\s*([^\n\r(]+)/i
+    /Customer\s*Name\s*:\s*([^\n\r(]+)/i,
+    ...khivrajProductBlock.customerName
   ],
 
   customerMobile: [
     /Customer\s*Phone\s*:\s*(\d{10})/i,
-    /Customer\s*Name[\s\S]*?Phone\s*:\s*(\d{10})/i
+    /Customer\s*Name[\s\S]*?Phone\s*:\s*(\d{10})/i,
+    ...khivrajProductBlock.customerMobile
   ],
 
   customerAddress: [
     /Bill\s*To\s*Address\s*:[\s\S]*?Email\s*:[^\n]+\n([\s\S]*?)\s*Delivery\s*Address\s*:/i,
-    /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Delivery\s*Address\s*:/i
+    /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Delivery\s*Address\s*:/i,
+    ...khivrajProductBlock.customerAddress
   ],
 
   pincode: [
-    /Bill\s*To\s*Address[\s\S]*?(\d{6})\s*\n[A-Za-z]+\s*\[State Code/i,
-    /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i
+    /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i,
+    /Bill\s*To\s*Address[\s\S]*?[A-Za-z]\s(\d{6})\s*\n[A-Za-z]+\s*\[State Code/i,
+    ...khivrajProductBlock.pincode
   ],
 
   hypothecation: [
     /H\.?P\.?Name\s*:[ \t]*([^\n\r]*)/i,
     /Hypothecated[\s\S]*?to\s*:[ \t]*([^\n\r]*)/i,
-    /Hypothecated\s*to\s*:[ \t]*([^\n\r]*)/i
+    /Hypothecated\s*to\s*:[ \t]*([^\n\r]*)/i,
+    ...khivrajProductBlock.hypothecation
   ],
 
   chassisNo: [
     /Chassis\s*No\.?\s*:\s*([A-Z0-9]{17})/i,
-    /Chassis\s*No\.?\s*:\s*([A-Z0-9]+)/i
+    /Chassis\s*No\.?\s*:\s*([A-Z0-9]+)/i,
+    ...khivrajProductBlock.chassisNo
   ],
 
   engineNo: [
     /Motor\s*No\.?\s*:\s*([A-Z0-9]+)/i,
-    /Engine\s*:\s*([A-Z0-9\-*]+)/i,
-    /Engine\s*No\.?\s*:\s*([A-Z0-9\-*]+)/i
+    /Engine\s*:[ \t]*([A-Z0-9\-*]+)/i,
+    ...khivrajProductBlock.engineNo
   ],
 
   model: [
     /\d+\s+(CHETAK(?:\s+[A-Z0-9]+)+)\s*\/\s*\d{8}/i,
     /Model:\s*([^\n\r]+)/i,
     /\d+\s+[A-Z0-9]+\s+((?:[^\n\/]|\n(?=[A-Z]+\s*\/))+?)\s*\/\s*\d{8}/is,
-    /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i
+    /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i,
+    ...khivrajProductBlock.model
   ],
 
   variant: [
@@ -263,11 +324,65 @@ export const extractionTemplateBAJAJ = {
   exshowroom: [
     /Total\s*Amount\s*([\d,]+\.?\d*)/i,
     /Grand\s*Total\s*([\d,]+\.?\d*)/i,
-    /Total\s*Amount\s*([\d,]+)/i
+    /Total\s*Amount\s*([\d,]+)/i,
+    ...khivrajProductBlock.exshowroom
   ],
 
   cc: [
     /Battery\s*Capacity\s*:\s*([\d.]+)\s*kWh/i
+  ]
+};
+
+export const extractionTemplateTRIUMPH = {
+  customerName: [
+    /Customer\s*Name\s*:\s*([^\n\r(]+)/i,
+    ...khivrajProductBlock.customerName
+  ],
+
+  customerMobile: [
+    /Phone\s*:\s*(\d{10})/i,
+    ...khivrajProductBlock.customerMobile
+  ],
+
+  customerAddress: [
+    /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*(?:Delivery|Place\s*of\s*Supply)\s*Address\s*:/i,
+    /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Place\s*of\s*Supply\s*:/i,
+    ...khivrajProductBlock.customerAddress
+  ],
+
+  pincode: [
+    /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i,
+    ...khivrajProductBlock.pincode
+  ],
+
+  hypothecation: [
+    /H\.?P\.?Name\s*:[ \t]*([^\n\r]*)/i,
+    ...khivrajProductBlock.hypothecation
+  ],
+
+  chassisNo: [
+    /Chassis\s*No\.?\s*:\s*([A-Z0-9]{17})/i,
+    ...khivrajProductBlock.chassisNo
+  ],
+
+  engineNo: [
+    /Engine\s*:[ \t]*([A-Z0-9\-*]+)/i,
+    ...khivrajProductBlock.engineNo
+  ],
+
+  model: [
+    /\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\/\s*\d{8}/i,
+    ...khivrajProductBlock.model
+  ],
+
+  variant: [
+    /Variant\s*:\s*([^\n\r]+)/i
+  ],
+
+  exshowroom: [
+    /Total\s*Amount\s*([\d,]+\.?\d*)/i,
+    /Grand\s*Total\s*([\d,]+\.?\d*)/i,
+    ...khivrajProductBlock.exshowroom
   ]
 };
 

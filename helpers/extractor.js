@@ -3,6 +3,7 @@ import {
   extractionTemplateKTM,
   extractionTemplateHONDA,
   extractionTemplateBAJAJ,
+  extractionTemplateTRIUMPH,
   extractionTemplateHERO,
   extractionTemplateTVS
 } from './templates.js';
@@ -12,6 +13,7 @@ const OEM_TEMPLATES = {
   KTM: extractionTemplateKTM,
   HONDA: extractionTemplateHONDA,
   BAJAJ: extractionTemplateBAJAJ,
+  TRIUMPH: extractionTemplateTRIUMPH,
   HERO: extractionTemplateHERO,
   'HERO MOTOCORP': extractionTemplateHERO,
   TVS: extractionTemplateTVS
@@ -202,7 +204,8 @@ const extractCustomerIdentity = (text, customerName) => {
 
   const dedicatedRelation = extractField(text, [
     /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:[ \t]*([^\n\r]*)/i,
-    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i
+    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i,
+    /Father\s*:\s*(?:S\/O\s*)?([^\n\r]+)/i
   ]);
 
   let relation = normalizeRelation(dedicatedRelation);
@@ -313,12 +316,12 @@ const extractHeroCc = (model, rawCc) => {
 
 const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
-const CLUBBED_VARIANT_OEMS = new Set(['BAJAJ', 'KTM']);
+const CLUBBED_VARIANT_OEMS = new Set(['BAJAJ', 'KTM', 'TRIUMPH']);
 
 const isClubbedVariantOem = (oem) => CLUBBED_VARIANT_OEMS.has(oem?.toUpperCase());
 
 const isChetakModel = (model, text) =>
-  /\bCHETAK\b/i.test(model || '') || /chetak-india\.com/i.test(text || '');
+  /\bCHETAK\b/i.test(model || '') || /chetak-india\.com|www\.chetak\.com/i.test(text || '');
 
 // Chetak invoices club variant into the model with no engine CC
 // e.g. "CHETAK C35 01" → model "CHETAK", variant "C3501"
@@ -348,14 +351,27 @@ const splitChetakModelVariant = (model) => {
   };
 };
 
-// Bajaj/KTM invoices have no Variant field — it is clubbed into the model
+// Bajaj/KTM/Triumph invoices have no Variant field — it is clubbed into the model
 // e.g. "PLATINA 100 ES DRUM" → model "PLATINA 100", variant "ES DRUM"
 // e.g. "Duke 160 Pro" → model "Duke 160", variant "Pro"
+// e.g. "SCRAMBLER 400XC" → model "SCRAMBLER", variant "400XC"
 const splitClubbedModelVariant = (model) => {
-  const normalized = normalizeModelName(model);
+  let normalized = normalizeModelName(model);
 
   if (!normalized) {
     return { model: null, variant: null, cc: null };
+  }
+
+  normalized = normalized.replace(/^(?:KTM|TRIUMPH|BAJAJ)\s+/i, '').trim();
+
+  // Glued displacement+variant (400XC) — DB usually stores CC inside variant
+  const glued = normalized.match(/^(.+?)\s+(\d{2,3})([A-Z][A-Z0-9\-]*)$/i);
+  if (glued) {
+    return {
+      model: glued[1].trim(),
+      variant: `${glued[2]}${glued[3]}`.trim(),
+      cc: glued[2]
+    };
   }
 
   const match = normalized.match(/^(.+?\s+(\d{2,3}))(?:\s+(.+))?$/);
@@ -369,6 +385,19 @@ const splitClubbedModelVariant = (model) => {
     variant: match[3]?.trim() || null,
     cc: match[2]
   };
+};
+
+const extractPincodeFromAddress = (address, existingPincode) => {
+  if (existingPincode) {
+    return existingPincode;
+  }
+
+  if (!address) {
+    return null;
+  }
+
+  const match = String(address).match(/(?:^|[\s,])(\d{6})(?:\s*(?:INDIA)?)?\s*$/i);
+  return match?.[1] || null;
 };
 
 const normalizeMobile = (value) => {
@@ -403,15 +432,18 @@ const enrichExtractedData = (text, oem, raw) => {
     ccSource = ccSource || split.cc;
   }
 
+  const address = sanitizeAddress(raw.customerAddress);
+  const pincode = extractPincodeFromAddress(address, raw.pincode);
+
   return {
     make: oem?.toUpperCase() || null,
     customerName,
     firstName,
     lastName,
     relation,
-    customerAddress: sanitizeAddress(raw.customerAddress),
+    customerAddress: address,
     customerMobile: normalizeMobile(raw.customerMobile),
-    pincode: raw.pincode,
+    pincode,
     hypothecation: sanitizeHypothecation(raw.hypothecation),
     chassisNo: raw.chassisNo,
     engineNo: raw.engineNo,

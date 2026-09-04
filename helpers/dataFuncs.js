@@ -47,6 +47,8 @@ const getKeywords = (value) => {
   );
   const wordKeywords = normalized
     .replace(/\d+\.\d+/g, ' ')
+    .replace(/([A-Z]+)(\d+)/g, '$1 $2')
+    .replace(/(\d+)([A-Z]+)/g, '$1 $2')
     .split(/[^A-Z0-9]+/)
     .filter((keyword) => keyword.length > 1);
 
@@ -85,9 +87,19 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
 
   if (invoiceKeywords.length && candidateKeywords.length) {
     const matchedCount = invoiceKeywords.filter((keyword) =>
-      candidateKeywords.some((candidateKeyword) =>
-        candidateKeyword.includes(keyword) || keyword.includes(candidateKeyword)
-      )
+      candidateKeywords.some((candidateKeyword) => {
+        if (candidateKeyword === keyword) {
+          return true;
+        }
+
+        // Prefer DB tokens that contain the full invoice token (not the reverse),
+        // so "400" alone does not fully satisfy invoice "400XC".
+        if (keyword.length > 1 && candidateKeyword.includes(keyword)) {
+          return true;
+        }
+
+        return false;
+      })
     ).length;
 
     if (matchedCount > 0) {
@@ -147,7 +159,7 @@ const rowHasCc = (row, cc) => {
   return haystack.includes(digits);
 };
 
-const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null) => {
+const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null, dbVariant = null) => {
   const invoiceAlpha = getAlphaModelName(invoiceModel);
   const candidateAlpha = getAlphaModelName(dbModel);
   const invoice = normalizeText(invoiceAlpha);
@@ -196,7 +208,7 @@ const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null) => 
   }
 
   if (invoiceCc) {
-    const ccHaystack = normalizeText(`${dbModel} ${dbCc || ''}`);
+    const ccHaystack = normalizeText(`${dbModel} ${dbVariant || ''} ${dbCc || ''}`);
 
     if (!ccHaystack.includes(invoiceCc)) {
       score = Math.min(score, 0.4);
@@ -222,6 +234,18 @@ const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null) => 
   return score;
 };
 
+const enrichVariantWithCc = (variant, ccDigits) => {
+  if (!variant || !ccDigits) {
+    return variant;
+  }
+
+  if (normalizeText(variant).includes(ccDigits)) {
+    return variant;
+  }
+
+  return `${ccDigits} ${variant}`.trim();
+};
+
 const isStandardVariant = (variant) => {
   const normalized = normalizeText(variant);
   return normalized === 'STD' || normalized === 'STANDARD';
@@ -242,7 +266,7 @@ const filterByModelScore = (models, invoiceModel, invoiceCc = null, minScore = M
   }
 
   const filtered = models.filter(
-    (row) => getModelScore(invoiceModel, row.model, row.cc, invoiceCc) >= minScore
+    (row) => getModelScore(invoiceModel, row.model, row.cc, invoiceCc, row.variant) >= minScore
   );
 
   return filtered.length ? filtered : [];
@@ -327,7 +351,7 @@ const findClosestByModel = (models, invoiceModel, cc) => {
 
   for (const current of candidates) {
     const score = invoiceModel
-      ? getModelScore(invoiceModel, current.model, current.cc, invoiceCcDigits)
+      ? getModelScore(invoiceModel, current.model, current.cc, invoiceCcDigits, current.variant)
       : 0;
     ranked.push({ ...current, matchScore: score, matchBy: 'model' });
   }
@@ -357,7 +381,24 @@ const findClosestVariant = (models, invoiceVariant, invoiceModel, cc, variantInM
     ranked.push({ ...current, matchScore: score, matchBy: 'variant' });
   }
 
-  ranked.sort((a, b) => b.matchScore - a.matchScore);
+  const invoiceNorm = normalizeText(invoiceVariant);
+  ranked.sort((a, b) => {
+    if (b.matchScore !== a.matchScore) {
+      return b.matchScore - a.matchScore;
+    }
+
+    const aVariant = variantInModel ? a.model : a.variant;
+    const bVariant = variantInModel ? b.model : b.variant;
+    const aExact = normalizeText(aVariant) === invoiceNorm ? 1 : 0;
+    const bExact = normalizeText(bVariant) === invoiceNorm ? 1 : 0;
+
+    if (bExact !== aExact) {
+      return bExact - aExact;
+    }
+
+    return String(bVariant || '').length - String(aVariant || '').length;
+  });
+
   return takeTopMatches(ranked);
 };
 
@@ -397,7 +438,7 @@ const fetchModels = async (
 
   const searchClauses = [];
 
-  if (applyVariantFilter && variantKeywords.length > 1) {
+  if (applyVariantFilter && variantKeywords.length >= 1) {
     variantKeywords.forEach((keyword, index) => {
       replacements[`kw${index}`] = `%${keyword}%`;
       searchClauses.push(`${variantInModel ? 'model' : 'variant'} LIKE :kw${index}`);
@@ -492,9 +533,10 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     const tableName = `${insurer}_models${insurer === 'national' ? '_NF' : ''}`;
     const insurerMake = getInsurerMake(oem, insurer);
     const variantInModel = VARIANT_IN_MODEL_INSURERS.includes(insurerKey);
+    const ccDigits = getInvoiceCcDigits(model, cc);
+    variant = enrichVariantWithCc(variant, ccDigits);
     let useModelMatch = isStandardVariant(variant);
     const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
-    const ccDigits = getInvoiceCcDigits(model, cc);
 
     let { models, usedModelKeywordFallback } = await fetchModelsWithFallback(
       tableName,
