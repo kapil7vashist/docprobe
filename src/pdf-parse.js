@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { PDFParse } from 'pdf-parse';
-import dataExtractor from '../helpers/extractor.js';
+import dataExtractor, { isMakeMismatch, MAKE_MISMATCH_MSG } from '../helpers/extractor.js';
 import { ENV } from '../env.js';
 import fs from 'fs';
 import findRelatedMappingData from '../helpers/findRelatedMappingData.js';
@@ -38,9 +38,13 @@ const pdfParse = async (req, res, next) => {
 
     const pdfText = result.text;
     const data = await dataExtractor(pdfText, oem, dealerCode);
-    console.log({data});
+    console.log({ data });
 
     await parser.destroy();
+
+    if (isMakeMismatch(oem, pdfText, data?.model)) {
+      return res.status(400).json({ msg: MAKE_MISMATCH_MSG });
+    }
 
     const mapping = await findRelatedMappingData(
       oem,

@@ -454,10 +454,59 @@ const enrichExtractedData = (text, oem, raw) => {
   };
 };
 
+/**
+ * Infer vehicle make from invoice text / model when brand markers are present.
+ * Returns null when inconclusive.
+ * Prefer model/product signals over dealer-network wording (e.g. Bajaj Auto selling KTM).
+ */
+const detectInvoiceMake = (text = '', model = '') => {
+  const haystack = `${model} ${text}`.toUpperCase();
+  const hasKtmSignal =
+    /\bKTM\b/.test(haystack) || /KHIVRAJKTM/.test(haystack) || /\bDUKE\b/.test(haystack);
+
+  if (/\bTRIUMPH\b/.test(haystack) || /\bSCRAMBLER\b/.test(haystack) || /\bTHRUXTON\b/.test(haystack)) {
+    return 'TRIUMPH';
+  }
+  if (/\bHONDA\b/.test(haystack) || /\bACTIVA\b/.test(haystack)) {
+    return 'HONDA';
+  }
+  if (/\bHERO\b/.test(haystack) || /\bSPLENDOR\b/.test(haystack) || /\bDESTINI\b/.test(haystack)) {
+    return 'HERO';
+  }
+  if (/\bTVS\b/.test(haystack) || /\bAPACHE\b/.test(haystack) || /\bJUPITER\b/.test(haystack)) {
+    return 'TVS';
+  }
+  if (
+    /\bCHETAK\b/.test(haystack) ||
+    /\bPULSAR\b/.test(haystack) ||
+    /\bPLATINA\b/.test(haystack) ||
+    /\bDOMINAR\b/.test(haystack) ||
+    /\bAVENGER\b/.test(haystack)
+  ) {
+    return 'BAJAJ';
+  }
+  if (hasKtmSignal) {
+    return 'KTM';
+  }
+
+  return null;
+};
+
+const MAKE_MISMATCH_MSG =
+  'The Invoice Uploaded is of other Manufacturer. Please select MAKE according to the Invoice';
+
+export const isMakeMismatch = (requestedMake, text, model) => {
+  const requested = String(requestedMake || '').toUpperCase();
+  const extractedMake = detectInvoiceMake(text, model);
+  if (!requested || !extractedMake) return false;
+  return requested !== extractedMake;
+};
+
 const dataExtractor = async (text, oem, dealerCode) => {
   const templates = getTemplates(oem);
   const raw = extractFromTemplates(text, templates);
   return enrichExtractedData(text, oem, raw);
 };
 
+export { MAKE_MISMATCH_MSG };
 export default dataExtractor;
