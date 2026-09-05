@@ -17,7 +17,7 @@ const getPdfBuffer = async (oem, base64String) => {
   }
 
   if (ENV === 'development') {
-    return readFile(path.join(process.cwd(), 'tmp', `KHIVRAJ ${oem}.pdf`));
+    return readFile(path.join(process.cwd(), 'tmp', `${oem} INVOICE.pdf`));
   }
 
   return null;
@@ -44,6 +44,13 @@ const pdfParse = async (req, res, next) => {
 
     if (isMakeMismatch(oem, pdfText, data?.model)) {
       return res.status(400).json({ msg: MAKE_MISMATCH_MSG });
+    }
+
+    const hasModel = Boolean(String(data?.model || '').trim());
+    if (!hasModel) {
+      return res.status(400).json({
+        msg: 'Unable to extract model/variant from the invoice. Please upload the correct invoice.'
+      });
     }
 
     const mapping = await findRelatedMappingData(

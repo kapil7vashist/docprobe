@@ -316,6 +316,8 @@ const extractHeroCc = (model, rawCc) => {
 
 const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
+const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
+
 const CLUBBED_VARIANT_OEMS = new Set(['BAJAJ', 'KTM', 'TRIUMPH']);
 
 const isClubbedVariantOem = (oem) => CLUBBED_VARIANT_OEMS.has(oem?.toUpperCase());
@@ -387,6 +389,61 @@ const splitClubbedModelVariant = (model) => {
   };
 };
 
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Honda Type/Variant often repeats the full commercial name.
+ * e.g. model "SHINE 100 DX" + variant "SHINE 100 DX" → "SHINE 100" / "DX"
+ * e.g. model "ACTIVA 125" + variant "ACTIVA 125 DISC" → "ACTIVA 125" / "DISC"
+ * Also strip trailing colour / paint codes from Description-of-Goods variants.
+ */
+const splitHondaModelVariant = (model, variant) => {
+  let normalizedModel = normalizeModelName(model);
+  let normalizedVariant = normalizeModelName(variant);
+
+  if (!normalizedModel) {
+    return { model: null, variant: null, cc: null };
+  }
+
+  if (normalizedVariant) {
+    normalizedVariant = normalizedVariant
+      .replace(
+        /\s+(?:MAT|PEARL|METALLIC|BLACK|GRAY|GREY|WHITE|RED|BLUE|SILVER|BROWN|GREEN|YELLOW|ORANGE|NHA\d+)\b.*$/i,
+        ''
+      )
+      .trim();
+  }
+
+  if (normalizedVariant) {
+    const prefixRe = new RegExp(`^${escapeRegExp(normalizedModel)}\\s*`, 'i');
+    if (prefixRe.test(normalizedVariant)) {
+      normalizedVariant = normalizedVariant.replace(prefixRe, '').trim() || null;
+    }
+  }
+
+  // Full name was in both fields — split after displacement (keep CC with model)
+  // e.g. "SHINE 100 DX" → model "SHINE 100", variant "DX"
+  if (!normalizedVariant) {
+    const match = normalizedModel.match(/^(.+?\s+(\d{2,3}))(?:\s+(.+))?$/);
+    if (match) {
+      return {
+        model: match[1].trim(),
+        variant: match[3]?.trim() || null,
+        cc: match[2]
+      };
+    }
+
+    return { model: normalizedModel, variant: null, cc: null };
+  }
+
+  const ccMatch = normalizedModel.match(/(?:^|\s)(\d{2,3})(?:\s|$)/);
+  return {
+    model: normalizedModel,
+    variant: normalizedVariant,
+    cc: ccMatch?.[1] || null
+  };
+};
+
 const extractPincodeFromAddress = (address, existingPincode) => {
   if (existingPincode) {
     return existingPincode;
@@ -420,6 +477,11 @@ const enrichExtractedData = (text, oem, raw) => {
   if (isHeroOem(oem)) {
     variant = extractHeroVariant(text, raw.model) || variant;
     ccSource = extractHeroCc(raw.model, null);
+  } else if (isHondaOem(oem)) {
+    const split = splitHondaModelVariant(model, variant);
+    model = split.model;
+    variant = split.variant;
+    ccSource = ccSource || split.cc;
   } else if (isChetakModel(raw.model, text)) {
     const split = splitChetakModelVariant(raw.model);
     model = split.model;

@@ -246,9 +246,13 @@ export const extractionTemplateHONDA = {
   ],
 
   variant: [
+    // Prefer short brake/variant token after Type code (e.g. 6ID DRUM ...)
+    /\d+\s+[A-Z][A-Z0-9 ]*?\s+\dID\s+(DISC|DRUM|DX|STD|DLX|CBS)\b/i,
     /\d+\s+[A-Z][A-Z0-9 ]+?\s+\dID\s+([A-Z0-9 ]+?)\s+[\d,]+\./i,
     /OBD2B\s+\dID\s+([A-Z0-9 ]+?)\s*\n/i,
     /\(\s*([A-Z0-9][A-Z0-9\s]*?)\s*\)\s*[0-9]ID/i,
+    // e.g. 5ID/ ACTIVA 125 DISC Mat Axis  |  2ID/ SHINE 100 DX Pearl ...
+    /[0-9]ID\/\s*([A-Z0-9]+(?:\s+[A-Z0-9]+)*?)(?=\s+(?:Mat|Pearl|Metallic|Black|Gray|Grey|White|Red|Blue|Silver|Brown|ME4)|$)/i,
     /[0-9]ID\/\s*([A-Z0-9]+(?:\s+[A-Z0-9]+)?)/i,
     /[0-9]ID\s+([A-Z0-9]+(?:\s+[A-Z0-9]+)?)/i,
     /Variant\s*:\s*([^\n\r]+)/i,
