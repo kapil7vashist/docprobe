@@ -17,7 +17,7 @@ const getPdfBuffer = async (oem, base64String) => {
   }
 
   if (ENV === 'development') {
-    return readFile(path.join(process.cwd(), 'tmp', `${oem} INVOICE.pdf`));
+    return readFile(path.join(process.cwd(), 'tmp', `KHIVRAJ ${oem}.pdf`));
   }
 
   return null;
@@ -63,7 +63,7 @@ const pdfParse = async (req, res, next) => {
       data?.cc
     );
 
-    const rtoDetails = await getRtoDetails(insurer, data?.pincode);
+    const rtoDetails = await getRtoDetails(insurer, data?.pincode, dealerCode);
     console.log({ rtoDetails });
 
     const financerDetails = await getFinancerName(insurer, data?.hypothecation, rtoDetails);

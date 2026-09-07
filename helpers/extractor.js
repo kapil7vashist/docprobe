@@ -153,15 +153,23 @@ const normalizeRelation = (value) => {
     return null;
   }
 
+  // Empty relation marker only
   if (/^(S\/O|W\/O|D\/O|C\/O|S\/W\/D)\s*:?\s*$/i.test(cleaned)) {
     return null;
   }
 
-  if (/^(S\/O|W\/O|D\/O|C\/O|S\/W\/D)\b/i.test(cleaned)) {
+  // Ambiguous Son/Wife/Daughter (S/W/D:NAME) — exact relation unknown
+  if (/^S\/W\/D\b/i.test(cleaned)) {
+    return null;
+  }
+
+  // Clear relation type only
+  if (/^(S\/O|W\/O|D\/O|C\/O)\b/i.test(cleaned)) {
     return cleaned;
   }
 
-  return `S/W/D:${cleaned}`;
+  // Bare relative name without S/O, W/O, D/O, or C/O
+  return null;
 };
 
 const splitFirstLastName = (customerName, relation) => {
@@ -204,11 +212,16 @@ const extractCustomerIdentity = (text, customerName) => {
 
   const dedicatedRelation = extractField(text, [
     /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:[ \t]*([^\n\r]*)/i,
-    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i,
+    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i
+  ]);
+
+  const fatherName = extractField(text, [
     /Father\s*:\s*(?:S\/O\s*)?([^\n\r]+)/i
   ]);
 
-  let relation = normalizeRelation(dedicatedRelation);
+  let relation =
+    normalizeRelation(dedicatedRelation) ||
+    (fatherName ? normalizeRelation(`S/O ${fatherName}`) : null);
 
   if (name) {
     const split = name.match(
@@ -217,7 +230,7 @@ const extractCustomerIdentity = (text, customerName) => {
 
     if (split) {
       name = split[1].trim().replace(/\s+/g, ' ');
-      relation = relation || split[2].trim().replace(/\s+/g, ' ');
+      relation = relation || normalizeRelation(split[2].trim().replace(/\s+/g, ' '));
     }
   }
 
