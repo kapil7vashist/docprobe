@@ -449,7 +449,7 @@ const splitHondaModelVariant = (model, variant) => {
     return { model: normalizedModel, variant: null, cc: null };
   }
 
-  const ccMatch = normalizedModel.match(/(?:^|\s)(\d{2,3})(?:\s|$)/);
+  const ccMatch = normalizedModel.match(/(\d{2,3})/);
   return {
     model: normalizedModel,
     variant: normalizedVariant,

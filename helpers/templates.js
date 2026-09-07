@@ -48,9 +48,9 @@ export const extractionTemplates = {
   ],
 
   engineNo: [
-    /Engine\s*:[ \t]*([A-Z0-9\-*]+)/i,
-    /Engine No\.?\s*[:\-]?[ \t]*([A-Z0-9]+)/i,
-    /Motor no\.?\s*[:\-]?[ \t]*([A-Z0-9]+)/i,
+    /ENG\s*NO\s*-?\s*([A-Z0-9]+)/i,
+    /Engine No\.?\s*[:\-]?[ \t]+([A-Z0-9]+)/i,
+    /Engine\s*:[ \t]+([A-Z0-9\-*]+)/i,
     /Engine number.*?:[ \t]*([A-Z0-9]+)/i,
     /Engine\s*No[ \t]+([A-Z0-9]+)/i
   ],
@@ -218,10 +218,12 @@ export const extractionTemplateHONDA = {
     /Chassis\s*No\.?\s*(?:\([^)]+\))?\s*([A-Z0-9]{17})/i,
     /Frame\s*No\.?\s*:\s*([A-Z0-9]{17})/i,
     /Chassis number\s*:\s*([A-Z0-9]{17})/i,
-    /3\s*Chassis\s*No\s*([A-Z0-9]{17})/i
+    /3\s*Chassis\s*No\s*([A-Z0-9]{17})/i,
+    /\b(ME4[A-Z0-9]{14})\b/i
   ],
 
   engineNo: [
+    /\bME4[A-Z0-9]{14}\s+([A-Z0-9]{8,})\b/i,
     /ENG\s*NO\s*-?\s*([A-Z0-9]+)/i,
     /19\.\s*Engine\s*No\.?\s*([A-Z0-9]+)/i,
     /4\.\s*Engine\s*No\.?\s*([A-Z0-9]+)/i,
@@ -231,6 +233,9 @@ export const extractionTemplateHONDA = {
   model: [
     /Description of Goods[\s\S]*?\n\d+\s+([A-Z][A-Z0-9 ]+?)\s+OBD/i,
     /Description of Goods[\s\S]*?\n\d+\s+([A-Z][A-Z0-9]+(?:\s+\d{2,3}[A-Z]?)?)\s+\dID/i,
+    // Same line: SP125 (CBF125MEFS)
+    /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9]+)\s*\(/i,
+    // Split lines: ACTIVA 125\n(SCV125S)
     /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9 ]+)\s*\n\s*\(/i,
     /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/i,
     /16\.\s*Maker's classification or if not known\s*([^\n(]+)/i
@@ -239,6 +244,7 @@ export const extractionTemplateHONDA = {
   cc: [
     /Description of Goods[\s\S]*?\n\d+\s+[A-Z][A-Z0-9 ]+?(\d{2,3})[A-Z]?\s+\dID/i,
     /Description of Goods[\s\S]*?\n\d+\s+[A-Z][A-Z0-9 ]+?\s+(\d{2,3})\s+OBD/i,
+    /Model\(Model Code\)[^\n]*\n[A-Z][A-Z0-9 ]*\s*\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i,
     /Model\(Model Code\)[\s\S]*?\n[A-Z][A-Z0-9 ]+\s*\n\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i,
     /Cubic\s*Capacity\s*:?\s*([\d.]+)\s*cc/i,
     /Cubic\s*Capacity\s*:?\s*([\d.]+)/i,
