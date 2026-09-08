@@ -58,6 +58,28 @@ const getKeywords = (value) => {
 const getVariantKeywords = getKeywords;
 
 const MIN_MODEL_MATCH_SCORE = 0.55;
+const MIN_VARIANT_MATCH_SCORE = 0.55;
+
+const COLOR_ONLY_VARIANT_TOKENS = new Set([
+  'EBONY',
+  'ORANGE',
+  'ORG',
+  'BLACK',
+  'WHITE',
+  'RED',
+  'BLUE',
+  'GREY',
+  'GRAY',
+  'SILVER',
+  'GREEN',
+  'YELLOW',
+  'METALLIC',
+  'METALIC',
+  'GLOSS',
+  'MATTE',
+  'MAT',
+  'PEARL'
+]);
 
 const getAlphaModelName = (model) => {
   const alpha = getKeywords(model).filter((keyword) => /^[A-Z]+$/.test(keyword));
@@ -120,7 +142,45 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
   const distance = levenshteinDistance(invoice, candidate);
   scores.push(1 - distance / Math.max(invoice.length, candidate.length));
 
-  return Math.max(...scores);
+  let score = Math.max(...scores, 0);
+
+  // Pure CC overlap (e.g. "250 EBONY" vs "ADV 250") is not a real variant match
+  const matchedMeaningful = invoiceKeywords.filter((keyword) => {
+    if (/^\d{2,4}$/.test(keyword)) {
+      return false;
+    }
+    return candidateKeywords.some(
+      (candidateKeyword) =>
+        candidateKeyword === keyword ||
+        candidateKeyword.includes(keyword) ||
+        keyword.includes(candidateKeyword)
+    );
+  });
+
+  if (!matchedMeaningful.length) {
+    score = Math.min(score, 0.35);
+  }
+
+  // Penalize extra model-family tokens in DB variant (ADV) not present on invoice
+  const invoiceAlpha = new Set(
+    invoiceKeywords.filter((keyword) => /^[A-Z]+$/i.test(keyword)).map((k) => k.toUpperCase())
+  );
+  const extraDbAlpha = candidateKeywords.filter(
+    (keyword) =>
+      /^[A-Z]+$/i.test(keyword) &&
+      keyword.length > 1 &&
+      !/^\d/.test(keyword) &&
+      !COLOR_ONLY_VARIANT_TOKENS.has(keyword.toUpperCase()) &&
+      ![...invoiceAlpha].some(
+        (inv) => keyword === inv || keyword.includes(inv) || inv.includes(keyword)
+      )
+  );
+
+  if (extraDbAlpha.length) {
+    score = Math.min(score, 0.4);
+  }
+
+  return score;
 };
 
 const parseAmount = (value) => {
@@ -231,6 +291,22 @@ const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null, dbV
     }
   }
 
+  // Prefer rows whose model name carries the invoice displacement (DUKE 250 UG)
+  // over sibling lines like DUKE + ADV 250.
+  const invoiceDigits = getModelDigitsFromName(invoiceModel);
+  if (invoiceDigits) {
+    const modelHasDigits = normalizeText(dbModel).includes(invoiceDigits);
+    const variantNorm = normalizeText(dbVariant);
+    const variantLooksLikeOtherFamily =
+      variantNorm.includes('ADV') && !normalizeText(invoiceModel).includes('ADV');
+
+    if (!modelHasDigits && variantLooksLikeOtherFamily) {
+      score = Math.min(score, 0.4);
+    } else if (modelHasDigits) {
+      score = Math.max(score, Math.min(1, score + 0.15));
+    }
+  }
+
   return score;
 };
 
@@ -248,7 +324,27 @@ const enrichVariantWithCc = (variant, ccDigits) => {
 
 const isStandardVariant = (variant) => {
   const normalized = normalizeText(variant);
-  return normalized === 'STD' || normalized === 'STANDARD';
+  return normalized === 'STD' || normalized === 'STANDARD' || normalized === '';
+};
+
+/** Colour / empty variants should not drive variant matching (e.g. EBONY → ADV 250). */
+const isNonDistinctiveVariant = (variant, ccDigits = null) => {
+  if (!variant || isStandardVariant(variant)) {
+    return true;
+  }
+
+  const keywords = getVariantKeywords(variant).filter((keyword) => {
+    if (/^\d{2,4}$/.test(keyword) && (!ccDigits || keyword === String(ccDigits))) {
+      return false;
+    }
+    return true;
+  });
+
+  if (!keywords.length) {
+    return true;
+  }
+
+  return keywords.every((keyword) => COLOR_ONLY_VARIANT_TOKENS.has(keyword));
 };
 
 const getCcFilteredModels = (models, cc) => {
@@ -356,7 +452,22 @@ const findClosestByModel = (models, invoiceModel, cc) => {
     ranked.push({ ...current, matchScore: score, matchBy: 'model' });
   }
 
-  ranked.sort((a, b) => b.matchScore - a.matchScore);
+  ranked.sort((a, b) => {
+    if (b.matchScore !== a.matchScore) {
+      return b.matchScore - a.matchScore;
+    }
+
+    const invoiceDigits = getModelDigitsFromName(invoiceModel);
+    if (invoiceDigits) {
+      const aHas = normalizeText(a.model).includes(invoiceDigits) ? 1 : 0;
+      const bHas = normalizeText(b.model).includes(invoiceDigits) ? 1 : 0;
+      if (bHas !== aHas) {
+        return bHas - aHas;
+      }
+    }
+
+    return 0;
+  });
   return takeTopMatches(ranked);
 };
 
@@ -518,7 +629,7 @@ const attachIdvDiff = (matches, targetIdv) =>
   });
 
 const hasVariantMatch = (matches) =>
-  matches.length > 0 && (matches[0].matchScore ?? 0) > 0;
+  matches.length > 0 && (matches[0].matchScore ?? 0) >= MIN_VARIANT_MATCH_SCORE;
 
 const hasUsableMatch = (matches) =>
   matches.length > 0 && (matches[0].matchScore ?? 0) >= MIN_MODEL_MATCH_SCORE;
@@ -577,8 +688,11 @@ export const getModelVariant = async (
     const insurerMake = getInsurerMake(oem, insurer);
     const variantInModel = VARIANT_IN_MODEL_INSURERS.includes(insurerKey);
     const ccDigits = getInvoiceCcDigits(model, cc);
-    variant = enrichVariantWithCc(variant, ccDigits);
-    let useModelMatch = isStandardVariant(variant);
+    // Colour-only / STD variants must not be CC-enriched into fake variant matches
+    let useModelMatch = isNonDistinctiveVariant(variant, ccDigits);
+    if (!useModelMatch) {
+      variant = enrichVariantWithCc(variant, ccDigits);
+    }
     const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
 
     const payloadModels = normalizeAllowedModels(allowedModels);

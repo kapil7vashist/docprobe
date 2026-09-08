@@ -116,6 +116,11 @@ const sanitizeHypothecation = (value) => {
     return null;
   }
 
+  // HSN / line-item leftovers (e.g. empty HPA followed by "87112029 1 246201.00")
+  if (/^\d{6,8}\b/.test(cleaned)) {
+    return null;
+  }
+
   if (/^branch address\b/i.test(cleaned) || /^original for recipient$/i.test(cleaned)) {
     return null;
   }
@@ -402,6 +407,19 @@ const splitClubbedModelVariant = (model) => {
   };
 };
 
+const stripTrailingColorTokens = (variant) => {
+  if (!variant) return null;
+
+  const cleaned = String(variant)
+    .replace(
+      /\s+(?:ORG|ORANGE|METALIC|METALLIC|GLOSS|BLACK|WHITE|RED|BLUE|GREY|GRAY|SILVER|GREEN|YELLOW|MATTE|MAT)\b.*$/i,
+      ''
+    )
+    .trim();
+
+  return cleaned || null;
+};
+
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -503,7 +521,7 @@ const enrichExtractedData = (text, oem, raw) => {
   } else if (isClubbedVariantOem(oem)) {
     const split = splitClubbedModelVariant(raw.model);
     model = split.model;
-    variant = variant || split.variant;
+    variant = stripTrailingColorTokens(variant || split.variant);
     ccSource = ccSource || split.cc;
   }
 

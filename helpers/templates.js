@@ -114,18 +114,28 @@ const khivrajProductBlock = {
 
 export const extractionTemplateKTM = {
   customerName: [
+    // SHISA: "Name: RUSHIL ... Name: RUSHIL ..." on one line
+    /Bill To\s+Ship To\s*\nName:\s*([^\n]+?)\s+Name:/i,
+    /(?:^|\n)Name:\s*([^\n]+?)\s+Name:/i,
+    /Bill To\s+Ship To\s*\nName:\s*([^\n]+)/i,
     /Customer\s*Name\s*:\s*([^\n\r(]+)/i,
     /VIN\s*No\s*(?::\s*)*\n([^\n\r]+)/i,
     ...khivrajProductBlock.customerName
   ],
 
   customerAddress: [
+    // SHISA: Address under Bill To (stop before second Address: / Contact:)
+    /Bill To\s+Ship To\s*\nName:[^\n]+\nAddress:\s*([\s\S]*?)\nAddress:/i,
+    /(?:^|\n)Name:[^\n]+\nAddress:\s*([\s\S]*?)\nContact:/i,
     /Bill\s*To\s*Address\s*:\s*([\s\S]*?)\s*Place\s*of\s*Supply\s*:/i,
     /VIN\s*No[\s:]*\n[^\n]+\n([\s\S]*?)\s+\d{6}\s*\n\(M\)/i,
     ...khivrajProductBlock.customerAddress
   ],
 
   pincode: [
+    // SHISA: "... AJWA ROAD. - 390019"
+    /Bill To[\s\S]*?Address:[\s\S]*?[-\s](\d{6})\s*\nAddress:/i,
+    /Address:[\s\S]*?[-\s](\d{6})\s*\nContact:/i,
     /Bill\s*To\s*Address\s*:[\s\S]*?\[State Code\s*:\s*\d+\],\s*(\d{6})/i,
     /VIN\s*No[\s:]*\n[^\n]+\n[\s\S]*?\s+(\d{6})\s*\n\(M\)/i,
     /Pin\s*:?\s*\n(?:\s*:\s*\n)*[^\n]+\n[\s\S]*?\n(\d{6})\s*\n\(M\)/i,
@@ -133,28 +143,35 @@ export const extractionTemplateKTM = {
   ],
 
   customerMobile: [
+    /Contact:\s*(\d{10})/i,
     /\(M\)-?(\d{10})/i,
     /Phone\s*:\s*(\d{10})/i
   ],
 
   hypothecation: [
+    // SHISA: only capture when HPA has a real value on the same line
+    /HPA\s*with\s*:\s*([A-Za-z][^\n\r]*)/i,
     /H\.?P\.?Name\s*:[ \t]*([^\n\r]*)/i,
     ...khivrajProductBlock.hypothecation
   ],
 
   chassisNo: [
+    /Chassis\s*Number\s*:\s*([A-Z0-9]{17})/i,
     /Chassis\s*No\.?\s*:\s*([A-Z0-9]{17})/i,
     /VIN\s*No[\s:]*\n[^\n]+\n[\s\S]*?\(M\)[^\n]*\n[A-Z0-9\-*]+\n([A-Z0-9]{17})/i,
     ...khivrajProductBlock.chassisNo
   ],
 
   engineNo: [
-    /Engine\s*:[ \t]*([A-Z0-9\-*]+)/i,
+    /Engine\s*Number\s*:\s*([A-Z0-9\-*]+)/i,
+    /Engine\s*No\.?\s*:\s*([A-Z0-9\-*]+)/i,
     /VIN\s*No[\s:]*\n[^\n]+\n[\s\S]*?\(M\)[^\n]*\n([A-Z0-9\-*]+)/i,
     ...khivrajProductBlock.engineNo
   ],
 
   model: [
+    // SHISA: "1 00JP1DF7 - KTM DUKE 390 R ED ORG METALIC GLOSS"
+    /\d+\s+[A-Z0-9]+\s*-\s*((?:KTM\s+)?[A-Z0-9][A-Z0-9 ]+?)(?:\s*\n|Chassis)/i,
     /\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i,
     /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i,
     /Model\s*\nColor\s*\n[^\n]*\n[^\n]*\n([^\n]+)/i,
@@ -169,6 +186,9 @@ export const extractionTemplateKTM = {
   ],
 
   exshowroom: [
+    // SHISA final total after amount-in-words
+    /ONLY\s+([\d,]+\.\d{2})/i,
+    /Taxable\s*Amount\s+([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+\.?\d*)/i,
     /Grand\s*Total\s*([\d,]+\.?\d*)/i,
     /Total\s*Amount\s*([\d,]+)/i,
