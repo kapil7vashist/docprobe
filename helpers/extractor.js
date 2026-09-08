@@ -570,9 +570,41 @@ const detectInvoiceMake = (text = '', model = '') => {
 const MAKE_MISMATCH_MSG =
   'The Invoice Uploaded is of other Manufacturer. Please select MAKE according to the Invoice';
 
+/** Canonical make keys so aliases like HERO MOTOCORP match detected HERO */
+const MAKE_ALIASES = {
+  HERO: 'HERO',
+  'HERO MOTOCORP': 'HERO',
+  'HERO MOTOCORP LTD': 'HERO',
+  'HERO MOTOCORP LIMITED': 'HERO',
+  HMCL: 'HERO',
+  BAJAJ: 'BAJAJ',
+  'BAJAJ AUTO': 'BAJAJ',
+  CHETAK: 'BAJAJ',
+  HONDA: 'HONDA',
+  'HMSI': 'HONDA',
+  KTM: 'KTM',
+  TRIUMPH: 'TRIUMPH',
+  TVS: 'TVS'
+};
+
+const canonicalizeMake = (make) => {
+  const key = String(make || '').toUpperCase().trim().replace(/\s+/g, ' ');
+  if (!key) return null;
+  if (MAKE_ALIASES[key]) return MAKE_ALIASES[key];
+
+  // Prefix aliases: "HERO MOTOCORP ..." → HERO
+  for (const [alias, canonical] of Object.entries(MAKE_ALIASES)) {
+    if (key === alias || key.startsWith(`${alias} `) || key.startsWith(`${canonical} `)) {
+      return canonical;
+    }
+  }
+
+  return key;
+};
+
 export const isMakeMismatch = (requestedMake, text, model) => {
-  const requested = String(requestedMake || '').toUpperCase();
-  const extractedMake = detectInvoiceMake(text, model);
+  const requested = canonicalizeMake(requestedMake);
+  const extractedMake = canonicalizeMake(detectInvoiceMake(text, model));
   if (!requested || !extractedMake) return false;
   return requested !== extractedMake;
 };
