@@ -25,7 +25,7 @@ const getPdfBuffer = async (oem, base64String) => {
 
 const pdfParse = async (req, res, next) => {
   try {
-    const { oem, dealerCode, base64String, insurer } = req.body;
+    const { oem, dealerCode, base64String, insurer, models } = req.body;
 
     const pdfBuffer = await getPdfBuffer(oem, base64String);
 
@@ -60,7 +60,8 @@ const pdfParse = async (req, res, next) => {
       insurer,
       data?.hypothecation || null,
       data?.exshowroom,
-      data?.cc
+      data?.cc,
+      models
     );
 
     const rtoDetails = await getRtoDetails(insurer, data?.pincode, dealerCode);

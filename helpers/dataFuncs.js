@@ -523,7 +523,50 @@ const hasVariantMatch = (matches) =>
 const hasUsableMatch = (matches) =>
   matches.length > 0 && (matches[0].matchScore ?? 0) >= MIN_MODEL_MATCH_SCORE;
 
-export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRequired, exshowroom, cc) => {
+/**
+ * Normalize payload `models` into the row shape used by scoring.
+ * When present, matching is restricted to this list only (no insurer DB fetch).
+ */
+const normalizeAllowedModels = (models) => {
+  if (!Array.isArray(models) || !models.length) {
+    return null;
+  }
+
+  return models
+    .map((row) => {
+      if (!row || typeof row !== 'object') {
+        return null;
+      }
+
+      const model = row.model != null ? String(row.model).trim() : '';
+      if (!model) {
+        return null;
+      }
+
+      return {
+        ...row,
+        id: row.id ?? null,
+        vehicle_code: row.id ?? row.vehicle_code ?? null,
+        model,
+        variant: row.variant != null ? String(row.variant).trim() : null,
+        cc: row.cc != null ? String(row.cc) : null,
+        default_idv: row.default_idv ?? row.exShowroomPrice ?? null,
+        exShowroomPrice: row.exShowroomPrice ?? null
+      };
+    })
+    .filter(Boolean);
+};
+
+export const getModelVariant = async (
+  oem,
+  model,
+  variant,
+  insurer,
+  isIdvRangeRequired,
+  exshowroom,
+  cc,
+  allowedModels = null
+) => {
   try {
     model = normalizeModelName(model);
     const { baseModel, combinedVariant } = splitInvoiceModelVariant(model, variant);
@@ -538,15 +581,24 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     let useModelMatch = isStandardVariant(variant);
     const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
 
-    let { models, usedModelKeywordFallback } = await fetchModelsWithFallback(
-      tableName,
-      insurerMake,
-      model,
-      variantKeywords,
-      ccDigits,
-      !useModelMatch,
-      variantInModel
-    );
+    const payloadModels = normalizeAllowedModels(allowedModels);
+    let models = [];
+    let usedModelKeywordFallback = false;
+
+    if (payloadModels) {
+      // Restrict selection to payload models only
+      models = payloadModels;
+    } else {
+      ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
+        tableName,
+        insurerMake,
+        model,
+        variantKeywords,
+        ccDigits,
+        !useModelMatch,
+        variantInModel
+      ));
+    }
 
     const exshowroomAmount = parseAmount(exshowroom);
     const targetIdv = exshowroomAmount != null ? exshowroomAmount * 0.95 : null;
@@ -560,15 +612,19 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     if (!useModelMatch && !hasVariantMatch(topMatches)) {
       useModelMatch = true;
       usedModelMatchFallback = true;
-      ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
-        tableName,
-        insurerMake,
-        model,
-        variantKeywords,
-        ccDigits,
-        false,
-        variantInModel
-      ));
+
+      if (!payloadModels) {
+        ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
+          tableName,
+          insurerMake,
+          model,
+          variantKeywords,
+          ccDigits,
+          false,
+          variantInModel
+        ));
+      }
+
       topMatches = findClosestByModel(models, model, cc);
     }
 
@@ -581,6 +637,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     let closestModel = null;
     let selectionReason = null;
     const matchLabel = useModelMatch ? 'model' : 'variant';
+    const sourceLabel = payloadModels ? 'payload models' : matchLabel;
 
     if (isIdvRangeRequired) {
       closestModel = pickClosestByDefaultIdv(topMatches, exshowroom, cc);
@@ -589,8 +646,8 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
           ? `No variant match found; selected from top ${topMatches.length} model matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
           : usedModelKeywordFallback
             ? `No full model-name match found; selected from top ${topMatches.length} model keyword matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
-            : `Selected from top ${topMatches.length} ${matchLabel} matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
-        : `Selected from top ${topMatches.length} ${matchLabel} matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
+            : `Selected from top ${topMatches.length} ${sourceLabel} matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+        : `Selected from top ${topMatches.length} ${sourceLabel} matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
 
       topMatches = moveClosestFirst(topMatches, closestModel).map((row) => ({
         ...row,
@@ -605,6 +662,10 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
           : useModelMatch
             ? `Selected as best model-name match (matchScore=${closestModel.matchScore})`
             : `Selected as best variant-name match (matchScore=${closestModel.matchScore})`;
+
+      if (payloadModels) {
+        selectionReason = `${selectionReason} [from payload models]`;
+      }
     }
 
     if (closestModel) {
@@ -617,6 +678,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
     const formattedTopMatches = topMatches.map((row, index) => ({
       ...row,
       rank: index + 1,
+      id: row.id ?? row.vehicle_code ?? null,
       model: row.model ?? null,
       variant: row.variant ?? null,
       default_idv: row.default_idv ?? null,
@@ -635,6 +697,8 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
       useModelMatch,
       usedModelMatchFallback,
       usedModelKeywordFallback,
+      usedPayloadModels: Boolean(payloadModels),
+      payloadModelCount: payloadModels?.length || 0,
       cc,
       variantKeywords,
       modelKeywords: getModelSearchKeywords(model).alpha,
@@ -642,6 +706,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
       targetIdv,
       closestModel: closestModel
         ? {
+            id: closestModel.id ?? closestModel.vehicle_code ?? null,
             model: closestModel.model,
             variant: closestModel.variant,
             default_idv: closestModel.default_idv,
@@ -653,6 +718,7 @@ export const getModelVariant = async (oem, model, variant, insurer, isIdvRangeRe
         : null,
       topMatches: formattedTopMatches.map((row) => ({
         rank: row.rank,
+        id: row.id,
         model: row.model,
         variant: row.variant,
         default_idv: row.default_idv,
