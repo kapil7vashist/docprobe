@@ -217,7 +217,8 @@ const extractCustomerIdentity = (text, customerName) => {
 
   const dedicatedRelation = extractField(text, [
     /S\/O\s*\|\s*D\/O\s*\|\s*W\/O\s*:[ \t]*([^\n\r]*)/i,
-    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i
+    /S\/W\/D\s*:[ \t]*([^\n\r\t]*)/i,
+    /Name of the Customer\s+[^\n]+\n((?:S\/O|W\/O|D\/O|C\/O)\s+[^\n]+)/i
   ]);
 
   const fatherName = extractField(text, [
@@ -267,12 +268,34 @@ const normalizeCc = (value) => {
 
 const HERO_OEMS = new Set(['HERO', 'HERO MOTOCORP']);
 
+/** Hero invoice abbreviations (e.g. SUP SPL → SUPER SPLENDOR) */
+const HERO_ABBREVIATIONS = {
+  SUP: 'SUPER',
+  SPL: 'SPLENDOR'
+};
+
+const expandHeroAbbreviations = (value) => {
+  if (!value) {
+    return value;
+  }
+
+  return String(value)
+    .split(/\s+/)
+    .map((token) => {
+      const key = token.toUpperCase();
+      return HERO_ABBREVIATIONS[key] || token;
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const COLOR_SUFFIX_WORDS = new Set([
   'BLUE', 'GREY', 'GRAY', 'RED', 'BLACK', 'WHITE', 'SILVER', 'GREEN',
   'YELLOW', 'ORANGE', 'BROWN', 'GOLD', 'METALLIC'
 ]);
 
-const MULTI_WORD_COLOR_PREFIXES = new Set(['GUN', 'DARK', 'LIGHT', 'PEARL']);
+const MULTI_WORD_COLOR_PREFIXES = new Set(['GUN', 'DARK', 'LIGHT', 'PEARL', 'GLOSSY', 'GLOSS', 'MATTE', 'MAT']);
 
 const getHeroColorWordCount = (words) => {
   if (words.length < 2 || !COLOR_SUFFIX_WORDS.has(words[words.length - 1])) {
@@ -285,12 +308,16 @@ const getHeroColorWordCount = (words) => {
     return 3;
   }
 
+  if (MULTI_WORD_COLOR_PREFIXES.has(w2)) {
+    return 2;
+  }
+
   return 2;
 };
 
 const extractHeroDescriptionLine = (text) => {
   const match = text.match(
-    /^\d+\.\s+.+\s+PC\s+[A-Z0-9]+\s+[A-Z0-9]{17}[\s\S]*?\n([^\n]+)\s*\n(?:Sub Total|Taxable Value)/im
+    /^\d+\.\s+[\s\S]*?\s+PC\s+[A-Z0-9]+\s+[A-Z0-9]{17}[\s\S]*?\n([^\n]+)\s*\n(?:Sub Total|Taxable Value)/im
   );
 
   return match?.[1]?.trim() || null;
@@ -298,19 +325,28 @@ const extractHeroDescriptionLine = (text) => {
 
 const extractHeroVariant = (text, model) => {
   const descriptionLine = extractHeroDescriptionLine(text);
+  const expandedDescription = expandHeroAbbreviations(descriptionLine);
+  const expandedModel = expandHeroAbbreviations(model);
 
-  if (!descriptionLine || !model || !descriptionLine.startsWith(model)) {
+  if (!expandedDescription || !expandedModel) {
     return null;
   }
 
-  const remainder = descriptionLine.slice(model.length).trim();
-  const words = remainder.split(/\s+/);
+  const descUpper = expandedDescription.toUpperCase();
+  const modelUpper = expandedModel.toUpperCase();
+
+  if (!descUpper.startsWith(modelUpper)) {
+    return null;
+  }
+
+  const remainder = expandedDescription.slice(expandedModel.length).trim();
+  const words = remainder.split(/\s+/).filter(Boolean);
 
   if (!words.length) {
     return null;
   }
 
-  let colorWordCount = getHeroColorWordCount(words);
+  let colorWordCount = getHeroColorWordCount(words.map((w) => w.toUpperCase()));
 
   if (colorWordCount >= words.length) {
     return null;
@@ -506,8 +542,9 @@ const enrichExtractedData = (text, oem, raw) => {
   let ccSource = raw.cc;
 
   if (isHeroOem(oem)) {
-    variant = extractHeroVariant(text, raw.model) || variant;
-    ccSource = extractHeroCc(raw.model, null);
+    model = expandHeroAbbreviations(normalizeModelName(raw.model));
+    variant = extractHeroVariant(text, model) || expandHeroAbbreviations(variant);
+    ccSource = extractHeroCc(model, null);
   } else if (isHondaOem(oem)) {
     const split = splitHondaModelVariant(model, variant);
     model = split.model;

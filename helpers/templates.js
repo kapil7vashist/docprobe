@@ -418,7 +418,8 @@ export const extractionTemplateTRIUMPH = {
 
 export const extractionTemplateHERO = {
   customerName: [
-    /Name of the Customer\s+([A-Z][A-Z\s]+?)\s+Date/i
+    /Name of the Customer\s+([^\n]+?)\s+Date/i,
+    /Name of the Customer\s+([^\n]+)/i
   ],
 
   customerAddress: [
@@ -430,6 +431,7 @@ export const extractionTemplateHERO = {
   ],
 
   customerMobile: [
+    /Mobile\s*(?:\/\s*Home\s*Ph\.?)?\s*#\s*(\d{10})/i,
     /Mobile\s*#\s*(\d{10})/i
   ],
 
@@ -438,16 +440,22 @@ export const extractionTemplateHERO = {
   ],
 
   chassisNo: [
+    // Single-line product row
     /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})/im,
+    // Multiline model (SUPER SPLENDOR\nXTEC 2.0\nCODE COL HSN PC ENG CHASSIS)
+    /^\d+\.\s+[\s\S]*?\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})\s+\d+/im,
     /Engine#\s*Chassis\s*#[\s\S]*?\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]+\s+\d+\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})/i
   ],
 
   engineNo: [
     /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/im,
+    /^\d+\.\s+[\s\S]*?\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}\s+\d+/im,
     /Engine#\s*Chassis\s*#[\s\S]*?\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]+\s+\d+\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/i
   ],
 
   model: [
+    // Multiline: "1. SUPER SPLENDOR\nXTEC 2.0\nHSPSFDSSCFI ..."
+    /^\d+\.\s+([A-Z][A-Z0-9 +./-]*)\s*\n([A-Z0-9]+(?:\s+[\d.]+)?)\s*\n[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC/im,
     /^\d+\.\s+(.+?)\s+[A-Z0-9]{8,}\s+[A-Z]{2,4}\s+\d{8}\s+PC/im
   ],
 
