@@ -477,8 +477,8 @@ export const extractionTemplateHERO = {
   ],
 
   exshowroom: [
-    // Last amount after the invoice-value labels is the figure total (incl. GST)
-    /Total Invoice Value \(In Figure\)[\s\S]*\n([\d,]+\.\d{2})\nSTATE\s*:/i,
+    // Amount after the words line. Accessories can sit between this figure and STATE.
+    /Total Invoice Value \(In Figure\)[\s\S]*?\n[A-Z][A-Z ]+\n([\d,]+\.\d{2})/i,
     /Ex\s*Showroom\s*Price\s+([\d,]+\.\d+)/i
   ]
 };

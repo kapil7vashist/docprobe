@@ -140,6 +140,7 @@ const sanitizeAddress = (value) => {
   const cleaned = String(value)
     .replace(/\s*\[State Code\s*:\s*\d+\]/gi, '')
     .replace(/\s+/g, ' ')
+    .replace(/\s+\./g, '.')
     .replace(/\s*,\s*/g, ', ')
     .replace(/,(?:\s*,)+/g, ',')
     .replace(/^,\s*|\s*,$/g, '')
