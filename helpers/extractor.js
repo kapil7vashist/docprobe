@@ -379,7 +379,8 @@ const HERO_VARIANT_TOKENS = new Set([
 
 const stripHeroEmissionSuffix = (value) =>
   String(value)
-    .replace(/[-\s]*OBD(?:\s*-?\s*\d+[A-Z]?)?\b/gi, ' ')
+    .replace(/[-\s]*OBD(?:\s*-?\s*\d+[A-Z]?\.?)?/gi, ' ')
+    .replace(/\s+\./g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -715,10 +716,23 @@ export const isMakeMismatch = (requestedMake, text, model) => {
   return requested !== extractedMake;
 };
 
+/**
+ * Rejoin a word the PDF wrapped at the end of a full line.
+ * "SURAT,CHOR\nYASI," → "SURAT,CHORYASI,". Short lines are left alone so
+ * "SHIV\nRESIDENCY," stays two words.
+ */
+const rejoinWrappedWords = (text) =>
+  String(text).replace(/([A-Za-z])\n([A-Za-z]{1,6}),/g, (match, last, next, offset, source) => {
+    const lineStart = source.lastIndexOf('\n', offset - 1);
+    const line = source.slice(lineStart + 1, offset + 1);
+    return line.length >= 28 ? `${last}${next},` : match;
+  });
+
 const dataExtractor = async (text, oem, dealerCode) => {
+  const source = rejoinWrappedWords(text);
   const templates = getTemplates(oem);
-  const raw = extractFromTemplates(text, templates);
-  return enrichExtractedData(text, oem, raw);
+  const raw = extractFromTemplates(source, templates);
+  return enrichExtractedData(source, oem, raw);
 };
 
 export { MAKE_MISMATCH_MSG };
