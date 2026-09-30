@@ -752,16 +752,19 @@ export const getModelVariant = async (
     let selectionReason = null;
     const matchLabel = useModelMatch ? 'model' : 'variant';
     const sourceLabel = payloadModels ? 'payload models' : matchLabel;
+    const minMatchScore = useModelMatch ? MIN_MODEL_MATCH_SCORE : MIN_VARIANT_MATCH_SCORE;
+    const qualifiedMatches = topMatches.filter((row) => (row.matchScore ?? 0) >= minMatchScore);
+    const idvCandidates = qualifiedMatches.length ? qualifiedMatches : topMatches;
 
     if (isIdvRangeRequired) {
-      closestModel = pickClosestByDefaultIdv(topMatches, exshowroom, cc);
+      closestModel = pickClosestByDefaultIdv(idvCandidates, exshowroom, cc);
       selectionReason = Number.isFinite(targetIdv)
         ? usedModelMatchFallback
-          ? `No variant match found; selected from top ${topMatches.length} model matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+          ? `No variant match found; selected from top ${idvCandidates.length} model matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
           : usedModelKeywordFallback
-            ? `No full model-name match found; selected from top ${topMatches.length} model keyword matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
-            : `Selected from top ${topMatches.length} ${sourceLabel} matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
-        : `Selected from top ${topMatches.length} ${sourceLabel} matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
+            ? `No full model-name match found; selected from top ${idvCandidates.length} model keyword matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+            : `Selected from top ${idvCandidates.length} ${sourceLabel} matches because isIdvRangeRequired=true and default_idv (${closestModel?.default_idv}) is closest to targetIdv (${targetIdv})`
+        : `Selected from top ${idvCandidates.length} ${sourceLabel} matches because isIdvRangeRequired=true (targetIdv unavailable, first match used)`;
 
       topMatches = moveClosestFirst(topMatches, closestModel).map((row) => ({
         ...row,
