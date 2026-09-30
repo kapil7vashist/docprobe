@@ -45,17 +45,79 @@ const getKeywords = (value) => {
   const versionKeywords = (normalized.match(/\d+\.\d+/g) || []).map((token) =>
     token.replace('.', '')
   );
-  const wordKeywords = normalized
+  // Keep codes like I3S / OBD2B whole. Trailing displacement (ACTIVA125) still splits.
+  const shields = [];
+  const shielded = normalized.replace(/\b([A-Z]+\d+[A-Z][A-Z0-9]*)\b/g, (token) => {
+    const mark = `SHIELD${String.fromCharCode(65 + shields.length)}`;
+    shields.push(token);
+    return mark;
+  });
+  const wordKeywords = shielded
     .replace(/\d+\.\d+/g, ' ')
     .replace(/([A-Z]+)(\d+)/g, '$1 $2')
     .replace(/(\d+)([A-Z]+)/g, '$1 $2')
     .split(/[^A-Z0-9]+/)
-    .filter((keyword) => keyword.length > 1);
+    .filter((keyword) => keyword.length > 1)
+    .map((keyword) => {
+      const shield = keyword.match(/^SHIELD([A-Z])$/);
+      return shield ? shields[shield[1].charCodeAt(0) - 65] : keyword;
+    });
 
   return [...new Set([...wordKeywords, ...versionKeywords])];
 };
 
 const getVariantKeywords = getKeywords;
+
+/** Dealer invoice codes that insurers store under a different word. */
+const VARIANT_SYNONYMS = {
+  CAST: 'ALLOY',
+  SS: 'SELF'
+};
+
+const EMISSION_VARIANT_TOKENS = new Set([
+  'BS', 'VI', 'IV', 'III', 'OBD', 'BSVI', 'BSIV', 'BS6'
+]);
+
+const canonicalVariantToken = (token) => {
+  const key = String(token || '').toUpperCase();
+  return VARIANT_SYNONYMS[key] || key;
+};
+
+const variantTokensMatch = (invoiceToken, dbToken) => {
+  const invoiceKey = canonicalVariantToken(invoiceToken);
+  const dbKey = canonicalVariantToken(dbToken);
+
+  if (invoiceKey === dbKey) {
+    return true;
+  }
+
+  // Prefer DB tokens that contain the full invoice token (not the reverse),
+  // so "400" alone does not fully satisfy invoice "400XC".
+  return invoiceKey.length > 1 && dbKey.includes(invoiceKey);
+};
+
+const expandVariantSearchKeywords = (keywords) => {
+  const expanded = [...keywords];
+
+  for (const keyword of keywords) {
+    const canonical = VARIANT_SYNONYMS[String(keyword).toUpperCase()];
+    if (canonical) {
+      expanded.push(canonical);
+    }
+  }
+
+  return [...new Set(expanded)];
+};
+
+const isIgnorableVariantToken = (keyword) => {
+  const key = String(keyword || '').toUpperCase();
+
+  if (COLOR_ONLY_VARIANT_TOKENS.has(key) || EMISSION_VARIANT_TOKENS.has(key)) {
+    return true;
+  }
+
+  return /^\d{2,4}$/.test(key);
+};
 
 const MIN_MODEL_MATCH_SCORE = 0.55;
 const MIN_VARIANT_MATCH_SCORE = 0.55;
@@ -109,19 +171,7 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
 
   if (invoiceKeywords.length && candidateKeywords.length) {
     const matchedCount = invoiceKeywords.filter((keyword) =>
-      candidateKeywords.some((candidateKeyword) => {
-        if (candidateKeyword === keyword) {
-          return true;
-        }
-
-        // Prefer DB tokens that contain the full invoice token (not the reverse),
-        // so "400" alone does not fully satisfy invoice "400XC".
-        if (keyword.length > 1 && candidateKeyword.includes(keyword)) {
-          return true;
-        }
-
-        return false;
-      })
+      candidateKeywords.some((candidateKeyword) => variantTokensMatch(keyword, candidateKeyword))
     ).length;
 
     if (matchedCount > 0) {
@@ -149,11 +199,8 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
     if (/^\d{2,4}$/.test(keyword)) {
       return false;
     }
-    return candidateKeywords.some(
-      (candidateKeyword) =>
-        candidateKeyword === keyword ||
-        candidateKeyword.includes(keyword) ||
-        keyword.includes(candidateKeyword)
+    return candidateKeywords.some((candidateKeyword) =>
+      variantTokensMatch(keyword, candidateKeyword)
     );
   });
 
@@ -161,20 +208,19 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
     score = Math.min(score, 0.35);
   }
 
-  // Penalize extra model-family tokens in DB variant (ADV) not present on invoice
-  const invoiceAlpha = new Set(
-    invoiceKeywords.filter((keyword) => /^[A-Z]+$/i.test(keyword)).map((k) => k.toUpperCase())
-  );
-  const extraDbAlpha = candidateKeywords.filter(
-    (keyword) =>
-      /^[A-Z]+$/i.test(keyword) &&
-      keyword.length > 1 &&
-      !/^\d/.test(keyword) &&
-      !COLOR_ONLY_VARIANT_TOKENS.has(keyword.toUpperCase()) &&
-      ![...invoiceAlpha].some(
-        (inv) => keyword === inv || keyword.includes(inv) || inv.includes(keyword)
-      )
-  );
+  // Penalize extra feature tokens in the DB variant (I3S, DRUM, ADV) not present on the invoice.
+  // Emission tags (BS VI, OBD) and colours are ignored.
+  const invoiceCanon = new Set(invoiceKeywords.map((keyword) => canonicalVariantToken(keyword)));
+  const extraDbAlpha = candidateKeywords.filter((keyword) => {
+    if (keyword.length <= 1 || isIgnorableVariantToken(keyword)) {
+      return false;
+    }
+
+    const canon = canonicalVariantToken(keyword);
+    return ![...invoiceCanon].some(
+      (inv) => canon === inv || (inv.length > 1 && canon.includes(inv))
+    );
+  });
 
   if (extraDbAlpha.length) {
     score = Math.min(score, 0.4);
@@ -693,7 +739,9 @@ export const getModelVariant = async (
     if (!useModelMatch) {
       variant = enrichVariantWithCc(variant, ccDigits);
     }
-    const variantKeywords = useModelMatch ? [] : getVariantKeywords(variant);
+    const variantKeywords = useModelMatch
+      ? []
+      : expandVariantSearchKeywords(getVariantKeywords(variant));
 
     const payloadModels = normalizeAllowedModels(allowedModels);
     let models = [];
