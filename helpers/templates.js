@@ -418,28 +418,36 @@ export const extractionTemplateTRIUMPH = {
 
 export const extractionTemplateHERO = {
   customerName: [
+    // Sadguru-style: chassis, engine, optional A/C code, then the customer name
+    /\n[A-Z0-9]{17}\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?([A-Za-z][A-Za-z.' ]+)\n/i,
     /Name of the Customer\s+([^\n]+?)\s+Date/i,
     /Name of the Customer\s+([^\n]+)/i
   ],
 
   customerAddress: [
+    /\n[A-Z0-9]{17}\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?[A-Za-z][A-Za-z.' ]+\n([\s\S]*?)\n\d{6}\nMOBILE\s*:/i,
     /Address\s+([\s\S]*?)\nState Code\s+\d+/i
   ],
 
   pincode: [
+    /\n(\d{6})\nMOBILE\s*:/i,
     /Address[\s\S]*?\n(\d{6})\s*\nState Code/i
   ],
 
   customerMobile: [
+    // Customer mobile is its own line; dealer "Phone : Mobile :" must not win
+    /\nMOBILE\s*:\s*(\d{10})/i,
     /Mobile\s*(?:\/\s*Home\s*Ph\.?)?\s*#\s*(\d{10})/i,
     /Mobile\s*#\s*(\d{10})/i
   ],
 
   hypothecation: [
+    /HPA\s*\/\s*Hypo\s*:?\s*([^\n]+)/i,
     /Hypothecation with\s+([^\n]+)/i
   ],
 
   chassisNo: [
+    /\n([A-Z0-9]{17})\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?[A-Za-z]/i,
     // Single-line product row
     /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})/im,
     // Multiline model (SUPER SPLENDOR\nXTEC 2.0\nCODE COL HSN PC ENG CHASSIS)
@@ -448,12 +456,15 @@ export const extractionTemplateHERO = {
   ],
 
   engineNo: [
+    /\n[A-Z0-9]{17}\n([A-Z0-9]{8,16})\n(?:\d{4,12}\n)?[A-Za-z]/i,
     /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/im,
     /^\d+\.\s+[\s\S]*?\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}\s+\d+/im,
     /Engine#\s*Chassis\s*#[\s\S]*?\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]+\s+\d+\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/i
   ],
 
   model: [
+    // Full commercial name: "DESTINI 110 FBC-VX" or "SPLENDOR PLUS CAST SS-OBD 2B"
+    /MODEL\s+([^\n\t]+)/i,
     // Multiline: "1. SUPER SPLENDOR\nXTEC 2.0\nHSPSFDSSCFI ..."
     /^\d+\.\s+([A-Z][A-Z0-9 +./-]*)\s*\n([A-Z0-9]+(?:\s+[\d.]+)?)\s*\n[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC/im,
     /^\d+\.\s+(.+?)\s+[A-Z0-9]{8,}\s+[A-Z]{2,4}\s+\d{8}\s+PC/im
@@ -461,9 +472,13 @@ export const extractionTemplateHERO = {
 
   cc: [],
 
-  variant: [],
+  variant: [
+    /MODEL\s+[A-Z][A-Z0-9]*(?:\s+[A-Z][A-Z0-9]*)*\s+\d{2,3}\s+([A-Z0-9][A-Z0-9-]*)/i
+  ],
 
   exshowroom: [
+    // Last amount after the invoice-value labels is the figure total (incl. GST)
+    /Total Invoice Value \(In Figure\)[\s\S]*\n([\d,]+\.\d{2})\nSTATE\s*:/i,
     /Ex\s*Showroom\s*Price\s+([\d,]+\.\d+)/i
   ]
 };

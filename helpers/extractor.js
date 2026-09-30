@@ -116,6 +116,10 @@ const sanitizeHypothecation = (value) => {
     return null;
   }
 
+  if (/^(?:n\.?\s*a\.?|n\/a|nil|not\s+applicable)$/i.test(cleaned)) {
+    return null;
+  }
+
   // HSN / line-item leftovers (e.g. empty HPA followed by "87112029 1 246201.00")
   if (/^\d{6,8}\b/.test(cleaned)) {
     return null;
@@ -368,6 +372,52 @@ const extractHeroCc = (model, rawCc) => {
   return match?.[1] || null;
 };
 
+const HERO_VARIANT_TOKENS = new Set([
+  'CAST', 'DRUM', 'DISC', 'SS', 'SELF', 'KICK', 'I3S', 'XTEC',
+  'IBS', 'ABS', 'ALLOY', 'SPOKE', 'FI'
+]);
+
+const stripHeroEmissionSuffix = (value) =>
+  String(value)
+    .replace(/[-\s]*OBD(?:\s*-?\s*\d+[A-Z]?)?\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * Split a Hero commercial name.
+ * "DESTINI 110 FBC-VX" → model DESTINI 110, variant FBC-VX
+ * "SPLENDOR PLUS CAST SS-OBD 2B" → model SPLENDOR PLUS, variant CAST SS
+ */
+const splitHeroCommercialName = (rawModel) => {
+  let value = expandHeroAbbreviations(normalizeModelName(rawModel));
+
+  if (!value) {
+    return { model: null, variant: null };
+  }
+
+  value = stripHeroEmissionSuffix(value);
+
+  const withCc = value.match(/^(.+?\s+(\d{2,3}))(?:\s+(.+))?$/);
+  if (withCc) {
+    return {
+      model: withCc[1].trim(),
+      variant: withCc[3]?.trim() || null
+    };
+  }
+
+  const words = value.split(/\s+/).filter(Boolean);
+  const variantWords = [];
+
+  while (words.length > 1 && HERO_VARIANT_TOKENS.has(words[words.length - 1].toUpperCase())) {
+    variantWords.unshift(words.pop());
+  }
+
+  return {
+    model: words.join(' ') || null,
+    variant: variantWords.join(' ') || null
+  };
+};
+
 const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
 const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
@@ -542,8 +592,9 @@ const enrichExtractedData = (text, oem, raw) => {
   let ccSource = raw.cc;
 
   if (isHeroOem(oem)) {
-    model = expandHeroAbbreviations(normalizeModelName(raw.model));
-    variant = extractHeroVariant(text, model) || expandHeroAbbreviations(variant);
+    const commercial = splitHeroCommercialName(raw.model);
+    model = commercial.model;
+    variant = extractHeroVariant(text, model) || commercial.variant || expandHeroAbbreviations(variant);
     ccSource = extractHeroCc(model, null);
   } else if (isHondaOem(oem)) {
     const split = splitHondaModelVariant(model, variant);
