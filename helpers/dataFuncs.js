@@ -619,6 +619,25 @@ const fetchModels = async (
   })) || [];
 };
 
+const catalogBodyType = (bodyType) => {
+  const key = String(bodyType || '').trim().toLowerCase();
+  if (key === 'scooter' || key === 'scooty') return 'SCOOTER';
+  if (key === 'bike' || key === 'motorcycle') return 'BIKE';
+  return null;
+};
+
+const filterModelsByBodyType = (models, bodyType) => {
+  const expected = catalogBodyType(bodyType);
+  if (!expected || !models?.length) return models || [];
+
+  const tagged = models.some((row) => String(row.body_type || row.bodyType || '').trim());
+  if (!tagged) return models;
+
+  return models.filter(
+    (row) => String(row.body_type || row.bodyType || '').trim().toUpperCase() === expected
+  );
+};
+
 const fetchModelsWithFallback = async (
   tableName,
   oem,
@@ -626,32 +645,39 @@ const fetchModelsWithFallback = async (
   variantKeywords,
   ccDigits,
   applyVariantFilter,
-  variantInModel = false
+  variantInModel = false,
+  bodyType = null
 ) => {
-  let models = await fetchModels(
-    tableName,
-    oem,
-    model,
-    variantKeywords,
-    ccDigits,
-    applyVariantFilter,
-    false,
-    variantInModel
+  let models = filterModelsByBodyType(
+    await fetchModels(
+      tableName,
+      oem,
+      model,
+      variantKeywords,
+      ccDigits,
+      applyVariantFilter,
+      false,
+      variantInModel
+    ),
+    bodyType
   );
 
   if (models.length) {
     return { models, usedModelKeywordFallback: false };
   }
 
-  models = await fetchModels(
-    tableName,
-    oem,
-    model,
-    variantKeywords,
-    ccDigits,
-    applyVariantFilter,
-    true,
-    variantInModel
+  models = filterModelsByBodyType(
+    await fetchModels(
+      tableName,
+      oem,
+      model,
+      variantKeywords,
+      ccDigits,
+      applyVariantFilter,
+      true,
+      variantInModel
+    ),
+    bodyType
   );
 
   return {
@@ -676,6 +702,11 @@ const attachIdvDiff = (matches, targetIdv) =>
 
 const hasVariantMatch = (matches) =>
   matches.length > 0 && (matches[0].matchScore ?? 0) >= MIN_VARIANT_MATCH_SCORE;
+
+// 0.4 is a real trim match with an extra catalog token (for example ZX plus DSSC).
+// 0.35 is CC-only overlap and should fall back to model matching.
+const hasPartialVariantMatch = (matches) =>
+  matches.length > 0 && (matches[0].matchScore ?? 0) > 0.35;
 
 const hasUsableMatch = (matches) =>
   matches.length > 0 && (matches[0].matchScore ?? 0) >= MIN_MODEL_MATCH_SCORE;
@@ -722,7 +753,8 @@ export const getModelVariant = async (
   isIdvRangeRequired,
   exshowroom,
   cc,
-  allowedModels = null
+  allowedModels = null,
+  bodyType = null
 ) => {
   try {
     model = normalizeModelName(model);
@@ -749,7 +781,7 @@ export const getModelVariant = async (
 
     if (payloadModels) {
       // Restrict selection to payload models only
-      models = payloadModels;
+      models = filterModelsByBodyType(payloadModels, bodyType);
     } else {
       ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
         tableName,
@@ -758,7 +790,8 @@ export const getModelVariant = async (
         variantKeywords,
         ccDigits,
         !useModelMatch,
-        variantInModel
+        variantInModel,
+        bodyType
       ));
     }
 
@@ -771,7 +804,7 @@ export const getModelVariant = async (
 
     let usedModelMatchFallback = false;
 
-    if (!useModelMatch && !hasVariantMatch(topMatches)) {
+    if (!useModelMatch && !hasVariantMatch(topMatches) && !hasPartialVariantMatch(topMatches)) {
       useModelMatch = true;
       usedModelMatchFallback = true;
 
@@ -783,7 +816,8 @@ export const getModelVariant = async (
           variantKeywords,
           ccDigits,
           false,
-          variantInModel
+          variantInModel,
+          bodyType
         ));
       }
 
@@ -801,8 +835,10 @@ export const getModelVariant = async (
     const matchLabel = useModelMatch ? 'model' : 'variant';
     const sourceLabel = payloadModels ? 'payload models' : matchLabel;
     const minMatchScore = useModelMatch ? MIN_MODEL_MATCH_SCORE : MIN_VARIANT_MATCH_SCORE;
-    const qualifiedMatches = topMatches.filter((row) => (row.matchScore ?? 0) >= minMatchScore);
-    const idvCandidates = qualifiedMatches.length ? qualifiedMatches : topMatches;
+    const bestScore = topMatches[0]?.matchScore ?? 0;
+    const bestTier = topMatches.filter((row) => Math.abs((row.matchScore ?? 0) - bestScore) < 0.001);
+    const qualifiedMatches = bestTier.filter((row) => (row.matchScore ?? 0) >= minMatchScore);
+    const idvCandidates = qualifiedMatches.length ? qualifiedMatches : bestTier;
 
     if (isIdvRangeRequired) {
       closestModel = pickClosestByDefaultIdv(idvCandidates, exshowroom, cc);

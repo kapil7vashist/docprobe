@@ -10,7 +10,8 @@ const findRelatedMappingData = async (
   hypothecation,
   exshowroom,
   cc,
-  allowedModels = null
+  allowedModels = null,
+  bodyType = null
 ) => {
   try {
     const insurerKey = String(insurer || '').toLowerCase().trim();
@@ -42,7 +43,8 @@ const findRelatedMappingData = async (
       isIdvRangeRequired,
       exshowroom,
       cc,
-      allowedModels
+      allowedModels,
+      bodyType
     );
     return result;
 

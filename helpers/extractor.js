@@ -728,11 +728,20 @@ const rejoinWrappedWords = (text) =>
     return line.length >= 28 ? `${last}${next},` : match;
   });
 
+const detectInvoiceBodyType = (text) => {
+  if (/\bSCOOTERS?\b/i.test(text)) return 'scooter';
+  if (/\bMOTOR\s*CYCLES?\b/i.test(text)) return 'bike';
+  return null;
+};
+
 const dataExtractor = async (text, oem, dealerCode) => {
   const source = rejoinWrappedWords(text);
   const templates = getTemplates(oem);
   const raw = extractFromTemplates(source, templates);
-  return enrichExtractedData(source, oem, raw);
+  return {
+    ...enrichExtractedData(source, oem, raw),
+    bodyType: detectInvoiceBodyType(source)
+  };
 };
 
 export { MAKE_MISMATCH_MSG };
