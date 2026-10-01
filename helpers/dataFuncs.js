@@ -619,25 +619,6 @@ const fetchModels = async (
   })) || [];
 };
 
-const catalogBodyType = (bodyType) => {
-  const key = String(bodyType || '').trim().toLowerCase();
-  if (key === 'scooter' || key === 'scooty') return 'SCOOTER';
-  if (key === 'bike' || key === 'motorcycle') return 'BIKE';
-  return null;
-};
-
-const filterModelsByBodyType = (models, bodyType) => {
-  const expected = catalogBodyType(bodyType);
-  if (!expected || !models?.length) return models || [];
-
-  const tagged = models.some((row) => String(row.body_type || row.bodyType || '').trim());
-  if (!tagged) return models;
-
-  return models.filter(
-    (row) => String(row.body_type || row.bodyType || '').trim().toUpperCase() === expected
-  );
-};
-
 const fetchModelsWithFallback = async (
   tableName,
   oem,
@@ -645,39 +626,32 @@ const fetchModelsWithFallback = async (
   variantKeywords,
   ccDigits,
   applyVariantFilter,
-  variantInModel = false,
-  bodyType = null
+  variantInModel = false
 ) => {
-  let models = filterModelsByBodyType(
-    await fetchModels(
-      tableName,
-      oem,
-      model,
-      variantKeywords,
-      ccDigits,
-      applyVariantFilter,
-      false,
-      variantInModel
-    ),
-    bodyType
+  let models = await fetchModels(
+    tableName,
+    oem,
+    model,
+    variantKeywords,
+    ccDigits,
+    applyVariantFilter,
+    false,
+    variantInModel
   );
 
   if (models.length) {
     return { models, usedModelKeywordFallback: false };
   }
 
-  models = filterModelsByBodyType(
-    await fetchModels(
-      tableName,
-      oem,
-      model,
-      variantKeywords,
-      ccDigits,
-      applyVariantFilter,
-      true,
-      variantInModel
-    ),
-    bodyType
+  models = await fetchModels(
+    tableName,
+    oem,
+    model,
+    variantKeywords,
+    ccDigits,
+    applyVariantFilter,
+    true,
+    variantInModel
   );
 
   return {
@@ -753,8 +727,7 @@ export const getModelVariant = async (
   isIdvRangeRequired,
   exshowroom,
   cc,
-  allowedModels = null,
-  bodyType = null
+  allowedModels = null
 ) => {
   try {
     model = normalizeModelName(model);
@@ -781,7 +754,7 @@ export const getModelVariant = async (
 
     if (payloadModels) {
       // Restrict selection to payload models only
-      models = filterModelsByBodyType(payloadModels, bodyType);
+      models = payloadModels;
     } else {
       ({ models, usedModelKeywordFallback } = await fetchModelsWithFallback(
         tableName,
@@ -790,8 +763,7 @@ export const getModelVariant = async (
         variantKeywords,
         ccDigits,
         !useModelMatch,
-        variantInModel,
-        bodyType
+        variantInModel
       ));
     }
 
@@ -816,8 +788,7 @@ export const getModelVariant = async (
           variantKeywords,
           ccDigits,
           false,
-          variantInModel,
-          bodyType
+          variantInModel
         ));
       }
 
