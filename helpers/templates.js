@@ -426,12 +426,12 @@ export const extractionTemplateHERO = {
 
   customerAddress: [
     /\n[A-Z0-9]{17}\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?[A-Za-z][A-Za-z.' ]+\n([\s\S]*?)\n\d{6}\nMOBILE\s*:/i,
-    /Address\s+([\s\S]*?)\nState Code\s+\d+/i
+    /Address\s+([\s\S]*?)\n(?:UIN Type|State Code)\s+/i
   ],
 
   pincode: [
     /\n(\d{6})\nMOBILE\s*:/i,
-    /Address[\s\S]*?\n(\d{6})\s*\nState Code/i
+    /Address[\s\S]*?\n(\d{6})\s*\n(?:UIN Type|State Code)/i
   ],
 
   customerMobile: [
@@ -463,8 +463,8 @@ export const extractionTemplateHERO = {
   ],
 
   model: [
-    // Full commercial name: "DESTINI 110 FBC-VX" or "SPLENDOR PLUS CAST SS-OBD 2B"
-    /MODEL\s+([^\n\t]+)/i,
+    // Sadguru label at line start. Skip "Model Variant" headers and "Model and Manufacturing".
+    /(?:^|\n)MODEL\s+(?!VARIANT\b)([A-Z0-9][^\n\t]*)/im,
     // Multiline: "1. SUPER SPLENDOR\nXTEC 2.0\nHSPSFDSSCFI ..."
     /^\d+\.\s+([A-Z][A-Z0-9 +./-]*)\s*\n([A-Z0-9]+(?:\s+[\d.]+)?)\s*\n[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC/im,
     /^\d+\.\s+(.+?)\s+[A-Z0-9]{8,}\s+[A-Z]{2,4}\s+\d{8}\s+PC/im
