@@ -420,6 +420,81 @@ const splitHeroCommercialName = (rawModel) => {
   };
 };
 
+const VIDA_PAINT_TOKEN =
+  /^(?:SC|RMV|MAT|MATTE|GUN|METAL|INSPIRED|WHITE|BLACK|GREY|GRAY|BLUE|RED|SILVER|GREEN|\d+P)$/i;
+
+const stripVidaPaint = (line) =>
+  String(line || '')
+    .split(/\s+/)
+    .filter((token) => token && !VIDA_PAINT_TOKEN.test(token))
+    .join(' ')
+    .trim();
+
+/** "VIDA VX2 GO 2.2 RQ" → model VIDA VX2, variant GO 2.2 RQ */
+const splitVidaName = (value) => {
+  const normalized = normalizeModelName(value);
+
+  if (!normalized || !/^VIDA\b/i.test(normalized)) {
+    return null;
+  }
+
+  const match = normalized.match(/^(VIDA(?:\s+VX\d+|\s+V\d+)?)(?:\s+(.+))?$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    model: match[1].trim(),
+    variant: match[2]?.trim() || null
+  };
+};
+
+/** New Sarthi Vida tax invoice. Older Vida rows still say Engine#. */
+const isNewVidaInvoice = (text, model) =>
+  /Motor\s*#/i.test(text || '') &&
+  /^VIDA\s+VX\d+\b/i.test(normalizeModelName(model) || '');
+
+/**
+ * Vida trims live on the product row. The next line is paint
+ * ("SC 9P RMV MAT GUN METAL"), except when it adds a battery size
+ * the product row omitted ("VIDA VX2 GO 3.1 FB").
+ */
+const splitVidaModelVariant = (rawModel, text) => {
+  const product = splitVidaName(rawModel);
+  const described = splitVidaName(stripVidaPaint(extractHeroDescriptionLine(text)));
+
+  if (!product) {
+    return { model: null, variant: null };
+  }
+
+  let variant = product.variant;
+
+  if (
+    described?.variant &&
+    /\d+\.\d+/.test(described.variant) &&
+    !/\d+\.\d+/.test(variant || '')
+  ) {
+    variant = described.variant;
+  }
+
+  return { model: product.model, variant };
+};
+
+const extractVidaCc = (text, variant, rawCc) => {
+  const named = variant?.match(/(\d+\.\d+)/)?.[1];
+  if (named) {
+    return named;
+  }
+
+  const installed = text.match(/installed battery capacity is\s+(\d+(?:\.\d+)?)\s*kwh/i);
+  if (installed) {
+    return installed[1].includes('.') ? installed[1] : `${installed[1]}.0`;
+  }
+
+  return rawCc || null;
+};
+
 const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
 const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
@@ -593,7 +668,12 @@ const enrichExtractedData = (text, oem, raw) => {
   let variant = raw.variant;
   let ccSource = raw.cc;
 
-  if (isHeroOem(oem)) {
+  if (isHeroOem(oem) && isNewVidaInvoice(text, raw.model)) {
+    const vida = splitVidaModelVariant(raw.model, text);
+    model = vida.model;
+    variant = vida.variant;
+    ccSource = extractVidaCc(text, variant, raw.cc);
+  } else if (isHeroOem(oem)) {
     const commercial = splitHeroCommercialName(raw.model);
     model = commercial.model;
     variant = extractHeroVariant(text, model) || commercial.variant || expandHeroAbbreviations(variant);
@@ -653,7 +733,7 @@ const detectInvoiceMake = (text = '', model = '') => {
   if (/\bHONDA\b/.test(haystack) || /\bACTIVA\b/.test(haystack)) {
     return 'HONDA';
   }
-  if (/\bHERO\b/.test(haystack) || /\bSPLENDOR\b/.test(haystack) || /\bDESTINI\b/.test(haystack)) {
+  if (/\bHERO\b/.test(haystack) || /\bVIDA\b/.test(haystack) || /\bSPLENDOR\b/.test(haystack) || /\bDESTINI\b/.test(haystack)) {
     return 'HERO';
   }
   if (/\bTVS\b/.test(haystack) || /\bAPACHE\b/.test(haystack) || /\bJUPITER\b/.test(haystack)) {

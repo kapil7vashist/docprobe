@@ -447,6 +447,8 @@ export const extractionTemplateHERO = {
   ],
 
   chassisNo: [
+    // New Vida layout only (header says Motor#, not Engine#)
+    /Motor#[\s\S]*?^\d+\.\s+VIDA\s+\S[\s\S]*?\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})\s+[\d.]+/im,
     /\n([A-Z0-9]{17})\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?[A-Za-z]/i,
     // Single-line product row
     /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+[A-Z0-9]+\s+([A-Z0-9]{17})/im,
@@ -456,6 +458,8 @@ export const extractionTemplateHERO = {
   ],
 
   engineNo: [
+    // New Vida layout only (header says Motor#, not Engine#)
+    /Motor#[\s\S]*?^\d+\.\s+VIDA\s+\S[\s\S]*?\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}\s+[\d.]+/im,
     /\n[A-Z0-9]{17}\n([A-Z0-9]{8,16})\n(?:\d{4,12}\n)?[A-Za-z]/i,
     /^\d+\.\s+[A-Z0-9+ .]+\s+[A-Z0-9]+\s+[A-Z]{2,4}\s+\d{8}\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}/im,
     /^\d+\.\s+[\s\S]*?\s+PC\s+([A-Z0-9]+)\s+[A-Z0-9]{17}\s+\d+/im,
@@ -463,6 +467,8 @@ export const extractionTemplateHERO = {
   ],
 
   model: [
+    // New Vida layout only: Motor# header, then "1. VIDA VX2 GO 2.2 RQ V3... PC"
+    /Motor#[\s\S]*?^\d+\.\s+(VIDA(?:\s+[A-Z0-9.]+)+)\s+[A-Z]\d[A-Z0-9]{5,}\s+[A-Z]{2,4}\s+\d{8}\s+PC/im,
     // Sadguru label at line start. Skip "Model Variant" headers and "Model and Manufacturing".
     /(?:^|\n)MODEL\s+(?!VARIANT\b)([A-Z0-9][^\n\t]*)/im,
     // Multiline: "1. SUPER SPLENDOR\nXTEC 2.0\nHSPSFDSSCFI ..."
@@ -470,7 +476,11 @@ export const extractionTemplateHERO = {
     /^\d+\.\s+(.+?)\s+[A-Z0-9]{8,}\s+[A-Z]{2,4}\s+\d{8}\s+PC/im
   ],
 
-  cc: [],
+  cc: [
+    // Usable battery on the Vida spec line, e.g. "2 2.0 kwh"
+    /Battery Chemistry[\s\S]*?\n[^\n]*?(\d+\.\d+)\s*kwh/i,
+    /installed battery capacity is\s+(\d+(?:\.\d+)?)\s*kwh/i
+  ],
 
   variant: [
     /MODEL\s+[A-Z][A-Z0-9]*(?:\s+[A-Z][A-Z0-9]*)*\s+\d{2,3}\s+([A-Z0-9][A-Z0-9-]*)/i
