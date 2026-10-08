@@ -152,7 +152,7 @@ const getModelSearchKeywords = (model) => ({
   alpha: getKeywords(model).filter((keyword) => /^[A-Z]+$/.test(keyword))
 });
 
-const getVariantScore = (invoiceVariant, dbVariant) => {
+const getVariantScore = (invoiceVariant, dbVariant, invoiceModel = null) => {
   const invoice = normalizeText(invoiceVariant);
   const candidate = normalizeText(dbVariant);
 
@@ -211,15 +211,21 @@ const getVariantScore = (invoiceVariant, dbVariant) => {
   // Penalize extra feature tokens in the DB variant (I3S, DRUM, ADV) not present on the invoice.
   // Emission tags (BS VI, OBD) and colours are ignored.
   const invoiceCanon = new Set(invoiceKeywords.map((keyword) => canonicalVariantToken(keyword)));
+  // Some catalogs keep the family on the variant ("VIDA" / "VX2 PLUS")
+  // while the invoice keeps it on the model ("VIDA VX2" / "PLUS").
+  const modelCanon = new Set(
+    getKeywords(invoiceModel).map((keyword) => canonicalVariantToken(keyword))
+  );
+  const coveredByInvoice = (canon) =>
+    [...invoiceCanon, ...modelCanon].some(
+      (inv) => inv.length > 1 && (canon === inv || canon.includes(inv))
+    );
   const extraDbAlpha = candidateKeywords.filter((keyword) => {
     if (keyword.length <= 1 || isIgnorableVariantToken(keyword)) {
       return false;
     }
 
-    const canon = canonicalVariantToken(keyword);
-    return ![...invoiceCanon].some(
-      (inv) => canon === inv || (inv.length > 1 && canon.includes(inv))
-    );
+    return !coveredByInvoice(canonicalVariantToken(keyword));
   });
 
   if (extraDbAlpha.length) {
@@ -534,7 +540,7 @@ const findClosestVariant = (models, invoiceVariant, invoiceModel, cc, variantInM
 
   for (const current of candidates) {
     const dbVariantValue = variantInModel ? current.model : current.variant;
-    const score = invoiceVariant ? getVariantScore(invoiceVariant, dbVariantValue) : 0;
+    const score = invoiceVariant ? getVariantScore(invoiceVariant, dbVariantValue, invoiceModel) : 0;
     ranked.push({ ...current, matchScore: score, matchBy: 'variant' });
   }
 
@@ -619,6 +625,40 @@ const fetchModels = async (
   })) || [];
 };
 
+/**
+ * Invoice model "VIDA VX2" is stored by some insurers as model "VIDA"
+ * and variant "VX2 PLUS". Search the leading token on model and the
+ * remaining family tokens on variant, together with the invoice variant.
+ */
+const fetchModelsWithFamilyOnVariant = async (
+  tableName,
+  oem,
+  model,
+  variantKeywords
+) => {
+  const alpha = getModelSearchKeywords(model).alpha;
+
+  if (alpha.length < 2) {
+    return [];
+  }
+
+  const replacements = { oem };
+  let sql = `SELECT * FROM ${tableName} WHERE make = :oem`;
+
+  replacements.familyModel = `%${alpha[0]}%`;
+  sql += ' AND model LIKE :familyModel';
+
+  [...alpha.slice(1), ...variantKeywords].forEach((keyword, index) => {
+    replacements[`familyVariant${index}`] = `%${keyword}%`;
+    sql += ` AND variant LIKE :familyVariant${index}`;
+  });
+
+  return (await dbConnection.query(sql, {
+    replacements,
+    type: Sequelize.QueryTypes.SELECT
+  })) || [];
+};
+
 const fetchModelsWithFallback = async (
   tableName,
   oem,
@@ -652,6 +692,20 @@ const fetchModelsWithFallback = async (
     applyVariantFilter,
     true,
     variantInModel
+  );
+
+  if (models.length || variantInModel || !applyVariantFilter) {
+    return {
+      models,
+      usedModelKeywordFallback: models.length > 0
+    };
+  }
+
+  models = await fetchModelsWithFamilyOnVariant(
+    tableName,
+    oem,
+    model,
+    variantKeywords
   );
 
   return {
