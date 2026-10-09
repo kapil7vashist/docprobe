@@ -487,6 +487,8 @@ export const extractionTemplateHERO = {
   ],
 
   exshowroom: [
+    // Vida: vehicle net after the PM E-DRIVE subsidy, not the ex-showroom line above it
+    /PM\s*E-?\s*DRIVE\s+Subsidy\s+[\d,]+\.\d+\s+Net Amount\s+([\d,]+\.\d+)/i,
     // Amount after the words line. Accessories can sit between this figure and STATE.
     /Total Invoice Value \(In Figure\)[\s\S]*?\n[A-Z][A-Z ]+\n([\d,]+\.\d{2})/i,
     /Ex\s*Showroom\s*Price\s+([\d,]+\.\d+)/i
