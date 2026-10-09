@@ -78,6 +78,9 @@ const getRtoByCode = async (insurer, rtoCode) => {
  * Old logic: resolve pincode → city from insurer pincode master,
  * then pick RTO whose city matches / contains / is contained in that city name.
  */
+const compactCitySql = (expression) =>
+  `REPLACE(UPPER(${expression}), ' ', '')`;
+
 const getRtoByPincodeCity = async (insurer, pincode) => {
   const pincodeResult = await dbConnection.query(
     `SELECT * FROM ${insurer}_pincodes WHERE pincode = :pincode`,
@@ -87,24 +90,33 @@ const getRtoByPincodeCity = async (insurer, pincode) => {
     }
   );
   const pincodeCity = String(pincodeResult?.[0]?.city || '').trim();
+  const pincodeState = String(pincodeResult?.[0]?.state || '').trim();
   if (!pincodeCity) return null;
 
-  // Ignore blank RTO cities — `LIKE '%%'` would otherwise match every row
+  const rtoCity = compactCitySql('city');
+  const pinCity = compactCitySql(':city');
+
+  // Ignore blank RTO cities — `LIKE '%%'` would otherwise match every row.
+  // Spaces are ignored so "BANAS KANTHA" matches Reliance "Banaskantha".
   const rtoDetailsResult = await dbConnection.query(
     `
       SELECT * FROM ${insurer}_rto
       WHERE city IS NOT NULL
         AND TRIM(city) <> ''
         AND (
-          city = :city
-          OR city LIKE :cityLike
-          OR :city LIKE CONCAT('%', city, '%')
+          ${rtoCity} = ${pinCity}
+          OR ${rtoCity} LIKE CONCAT('%', ${pinCity}, '%')
+          OR ${pinCity} LIKE CONCAT('%', ${rtoCity}, '%')
         )
       ORDER BY
         CASE
-          WHEN city = :city THEN 0
-          WHEN city LIKE :cityLike THEN 1
+          WHEN ${rtoCity} = ${pinCity} THEN 0
+          WHEN ${rtoCity} LIKE CONCAT('%', ${pinCity}, '%') THEN 1
           ELSE 2
+        END,
+        CASE
+          WHEN :state <> '' AND UPPER(TRIM(state)) = UPPER(TRIM(:state)) THEN 0
+          ELSE 1
         END,
         CHAR_LENGTH(city) DESC
       LIMIT 1
@@ -112,7 +124,7 @@ const getRtoByPincodeCity = async (insurer, pincode) => {
     {
       replacements: {
         city: pincodeCity,
-        cityLike: `%${pincodeCity}%`
+        state: pincodeState
       },
       type: Sequelize.QueryTypes.SELECT
     }
