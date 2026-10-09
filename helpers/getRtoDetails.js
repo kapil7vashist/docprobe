@@ -81,6 +81,37 @@ const getRtoByCode = async (insurer, rtoCode) => {
 const compactCitySql = (expression) =>
   `REPLACE(UPPER(${expression}), ' ', '')`;
 
+const compactCity = (value) =>
+  String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/** "MAHESANA" and "MEHSANA" share a consonant skeleton. "MAHE" does not. */
+const citySkeleton = (value) => compactCity(value).replace(/[AEIOU]/g, '');
+
+const pickRtoByCitySpelling = (rows, pincodeCity) => {
+  const pinCompact = compactCity(pincodeCity);
+  const pinSkeleton = citySkeleton(pincodeCity);
+
+  if (pinSkeleton.length < 4) {
+    return null;
+  }
+
+  const ranked = rows
+    .map((row) => {
+      const cityCompact = compactCity(row.city);
+      const skeleton = citySkeleton(row.city);
+
+      if (!cityCompact || skeleton !== pinSkeleton) {
+        return null;
+      }
+
+      return { row, exact: cityCompact === pinCompact ? 0 : 1, length: cityCompact.length };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.exact - b.exact || b.length - a.length);
+
+  return ranked[0]?.row || null;
+};
+
 const getRtoByPincodeCity = async (insurer, pincode) => {
   const pincodeResult = await dbConnection.query(
     `SELECT * FROM ${insurer}_pincodes WHERE pincode = :pincode`,
@@ -106,7 +137,11 @@ const getRtoByPincodeCity = async (insurer, pincode) => {
         AND (
           ${rtoCity} = ${pinCity}
           OR ${rtoCity} LIKE CONCAT('%', ${pinCity}, '%')
-          OR ${pinCity} LIKE CONCAT('%', ${rtoCity}, '%')
+          OR (
+            CHAR_LENGTH(${rtoCity}) >= 5
+            AND CHAR_LENGTH(${rtoCity}) * 4 >= CHAR_LENGTH(${pinCity}) * 3
+            AND ${pinCity} LIKE CONCAT('%', ${rtoCity}, '%')
+          )
         )
       ORDER BY
         CASE
@@ -130,7 +165,28 @@ const getRtoByPincodeCity = async (insurer, pincode) => {
     }
   );
 
-  return rtoDetailsResult?.[0] || null;
+  if (rtoDetailsResult?.[0]) {
+    return rtoDetailsResult[0];
+  }
+
+  if (!pincodeState) {
+    return null;
+  }
+
+  const stateRows = await dbConnection.query(
+    `
+      SELECT * FROM ${insurer}_rto
+      WHERE city IS NOT NULL
+        AND TRIM(city) <> ''
+        AND UPPER(TRIM(state)) = UPPER(TRIM(:state))
+    `,
+    {
+      replacements: { state: pincodeState },
+      type: Sequelize.QueryTypes.SELECT
+    }
+  );
+
+  return pickRtoByCitySpelling(stateRows, pincodeCity);
 };
 
 const getRtoDetails = async (insurer, pincode, dealerCode = null) => {

@@ -75,7 +75,7 @@ const VARIANT_SYNONYMS = {
 };
 
 const EMISSION_VARIANT_TOKENS = new Set([
-  'BS', 'VI', 'IV', 'III', 'OBD', 'BSVI', 'BSIV', 'BS6'
+  'BS', 'VI', 'IV', 'III', 'OBD', 'BSVI', 'BSIV', 'BS6', 'KWH', 'KW'
 ]);
 
 const canonicalVariantToken = (token) => {
@@ -604,7 +604,9 @@ const fetchModels = async (
   if (applyVariantFilter && variantKeywords.length >= 1) {
     variantKeywords.forEach((keyword, index) => {
       replacements[`kw${index}`] = `%${keyword}%`;
-      searchClauses.push(`${variantInModel ? 'model' : 'variant'} LIKE :kw${index}`);
+      // "3.4" is stored with a dot, while the keyword is "34"
+      const variantColumn = variantInModel ? 'model' : 'variant';
+      searchClauses.push(`REPLACE(${variantColumn}, '.', '') LIKE :kw${index}`);
     });
   }
 
@@ -650,7 +652,7 @@ const fetchModelsWithFamilyOnVariant = async (
 
   [...alpha.slice(1), ...variantKeywords].forEach((keyword, index) => {
     replacements[`familyVariant${index}`] = `%${keyword}%`;
-    sql += ` AND variant LIKE :familyVariant${index}`;
+    sql += ` AND REPLACE(variant, '.', '') LIKE :familyVariant${index}`;
   });
 
   return (await dbConnection.query(sql, {
