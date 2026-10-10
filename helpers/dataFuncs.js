@@ -152,6 +152,14 @@ const getModelSearchKeywords = (model) => ({
   alpha: getKeywords(model).filter((keyword) => /^[A-Z]+$/.test(keyword))
 });
 
+/** Oriental stores Dual Channel as "DC" (NS 200 DC ABS). */
+const dualChannelMatchesDc = (invoiceKeywords, candidateKeywords) => {
+  const invoice = invoiceKeywords.map((keyword) => keyword.toUpperCase());
+  const candidate = candidateKeywords.map((keyword) => keyword.toUpperCase());
+
+  return invoice.includes('DUAL') && invoice.includes('CHANNEL') && candidate.includes('DC');
+};
+
 const getVariantScore = (invoiceVariant, dbVariant, invoiceModel = null) => {
   const invoice = normalizeText(invoiceVariant);
   const candidate = normalizeText(dbVariant);
@@ -169,10 +177,18 @@ const getVariantScore = (invoiceVariant, dbVariant, invoiceModel = null) => {
   const invoiceKeywords = getVariantKeywords(invoiceVariant);
   const candidateKeywords = getVariantKeywords(dbVariant);
 
+  const dcMatch = dualChannelMatchesDc(invoiceKeywords, candidateKeywords);
+  const keywordMatches = (keyword) => {
+    const key = keyword.toUpperCase();
+    if (dcMatch && (key === 'DUAL' || key === 'CHANNEL')) {
+      return true;
+    }
+
+    return candidateKeywords.some((candidateKeyword) => variantTokensMatch(keyword, candidateKeyword));
+  };
+
   if (invoiceKeywords.length && candidateKeywords.length) {
-    const matchedCount = invoiceKeywords.filter((keyword) =>
-      candidateKeywords.some((candidateKeyword) => variantTokensMatch(keyword, candidateKeyword))
-    ).length;
+    const matchedCount = invoiceKeywords.filter((keyword) => keywordMatches(keyword)).length;
 
     if (matchedCount > 0) {
       scores.push(0.5 + (0.5 * (matchedCount / invoiceKeywords.length)));
@@ -199,9 +215,7 @@ const getVariantScore = (invoiceVariant, dbVariant, invoiceModel = null) => {
     if (/^\d{2,4}$/.test(keyword)) {
       return false;
     }
-    return candidateKeywords.some((candidateKeyword) =>
-      variantTokensMatch(keyword, candidateKeyword)
-    );
+    return keywordMatches(keyword);
   });
 
   if (!matchedMeaningful.length) {
@@ -225,7 +239,12 @@ const getVariantScore = (invoiceVariant, dbVariant, invoiceModel = null) => {
       return false;
     }
 
-    return !coveredByInvoice(canonicalVariantToken(keyword));
+    const canon = canonicalVariantToken(keyword);
+    if (dcMatch && canon === 'DC') {
+      return false;
+    }
+
+    return !coveredByInvoice(canon);
   });
 
   if (extraDbAlpha.length) {
@@ -650,10 +669,24 @@ const fetchModelsWithFamilyOnVariant = async (
   replacements.familyModel = `%${alpha[0]}%`;
   sql += ' AND model LIKE :familyModel';
 
-  [...alpha.slice(1), ...variantKeywords].forEach((keyword, index) => {
+  const familyKeywords = [...alpha.slice(1), ...variantKeywords];
+  const dualChannel = familyKeywords.some((keyword) => keyword.toUpperCase() === 'DUAL')
+    && familyKeywords.some((keyword) => keyword.toUpperCase() === 'CHANNEL');
+  const requiredKeywords = dualChannel
+    ? familyKeywords.filter((keyword) => !['DUAL', 'CHANNEL'].includes(keyword.toUpperCase()))
+    : familyKeywords;
+
+  requiredKeywords.forEach((keyword, index) => {
     replacements[`familyVariant${index}`] = `%${keyword}%`;
     sql += ` AND REPLACE(variant, '.', '') LIKE :familyVariant${index}`;
   });
+
+  if (dualChannel) {
+    sql += ` AND (
+      (REPLACE(variant, '.', '') LIKE '%DUAL%' AND REPLACE(variant, '.', '') LIKE '%CHANNEL%')
+      OR REPLACE(variant, '.', '') LIKE '%DC%'
+    )`;
+  }
 
   return (await dbConnection.query(sql, {
     replacements,

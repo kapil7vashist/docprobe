@@ -339,6 +339,8 @@ export const extractionTemplateBAJAJ = {
 
   model: [
     /\d+\s+(CHETAK(?:\s+[A-Z0-9]+)+)\s*\/\s*\d{8}/i,
+    // "1 00JL25\nPULSAR NS 200\nDUAL CHANNEL /\n87112029"
+    /(?:^|\n)\d+\s+[A-Z0-9]+\s*\n((?:PULSAR|PLATINA|AVENGER|DOMINAR|FREEDOM|HUSQVARNA|CHETAK)[^\n]*(?:\n[A-Z][^\n/]{0,40})?)\s*\/\s*\n?\d{8}/i,
     /Model:\s*([^\n\r]+)/i,
     /\d+\s+[A-Z0-9]+\s+((?:[^\n\/]|\n(?=[A-Z]+\s*\/))+?)\s*\/\s*\d{8}/is,
     /DESCRIPTION\s*\/\s*HSN\/SAC\s*CODE[\s\S]*?\d+\s+[A-Z0-9]+\s+([^\n\/]+?)\s*\n\s*\/\s*\d{8}/i,

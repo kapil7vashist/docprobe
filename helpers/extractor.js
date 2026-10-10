@@ -207,8 +207,12 @@ const stripSalutation = (value) => {
     return null;
   }
 
-  const salutation = /^(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sri|Smt|Shri|Shree|Kumari|Km|Master|Mx)\.?\s+/i;
   let name = String(value).trim().replace(/\s+/g, ' ');
+  const firmName = /\b(?:ENTERPRISES?|PVT|PRIVATE|LTD|LIMITED|LLP|COMPANY|MOTORS|TRADERS|AGENCIES|INDUSTRIES|CORPORATION|CORP)\b/i.test(name);
+  // "SHREE GAJANAN ENTERPRISES" keeps SHREE. A person name still drops it.
+  const salutation = firmName
+    ? /^(?:Mr|Mrs|Ms|Miss|Dr|Prof|Kumari|Km|Master|Mx)\.?\s+/i
+    : /^(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sri|Smt|Shri|Shree|Kumari|Km|Master|Mx)\.?\s+/i;
 
   while (salutation.test(name)) {
     name = name.replace(salutation, '').trim();
