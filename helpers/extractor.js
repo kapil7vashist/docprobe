@@ -182,14 +182,14 @@ const normalizeRelation = (value) => {
   return null;
 };
 
-const splitFirstLastName = (customerName, relation) => {
+const splitFirstLastName = (customerName) => {
   if (!customerName) {
     return { firstName: null, lastName: null };
   }
 
   const parts = customerName.trim().split(/\s+/);
 
-  if (parts.length >= 3) {
+  if (parts.length >= 2) {
     return {
       firstName: parts.slice(0, -1).join(' '),
       lastName: parts[parts.length - 1]
@@ -198,7 +198,34 @@ const splitFirstLastName = (customerName, relation) => {
 
   return {
     firstName: customerName,
-    lastName: relation || null
+    lastName: null
+  };
+};
+
+// "S O", "S/O", "S.O" are the same relation marker. The slash is often lost in the PDF text.
+const RELATION_MARKER = String.raw`(?:S|W|D|C)\s*\.?\s*\/?\s*O`;
+
+const formatRelation = (marker, relativeName) => {
+  const letter = String(marker || '').toUpperCase().match(/[SWDC]/)?.[0];
+  const relative = String(relativeName || '').trim().replace(/\s+/g, ' ');
+
+  if (!letter || !relative) {
+    return null;
+  }
+
+  return normalizeRelation(`${letter}/O ${relative}`);
+};
+
+const splitRelationFromName = (value) => {
+  const match = String(value || '').match(new RegExp(`^(.*?)\\s+(${RELATION_MARKER})\\s+(.+)$`, 'i'));
+
+  if (!match?.[1] || !match[3]) {
+    return { name: value, relation: null };
+  }
+
+  return {
+    name: match[1].trim().replace(/\s+/g, ' '),
+    relation: formatRelation(match[2], match[3])
   };
 };
 
@@ -239,14 +266,9 @@ const extractCustomerIdentity = (text, customerName) => {
     (fatherName ? normalizeRelation(`S/O ${fatherName}`) : null);
 
   if (name) {
-    const split = name.match(
-      /^(.*?)\s+((?:S\/O|W\/O|D\/O|C\/O)\s+.+)$/i
-    );
-
-    if (split) {
-      name = split[1].trim().replace(/\s+/g, ' ');
-      relation = relation || normalizeRelation(split[2].trim().replace(/\s+/g, ' '));
-    }
+    const split = splitRelationFromName(name);
+    name = split.name;
+    relation = relation || split.relation;
   }
 
   name = stripSalutation(name);
@@ -667,7 +689,7 @@ const normalizeMobile = (value) => {
 // Post-processors applied after raw template extraction
 const enrichExtractedData = (text, oem, raw) => {
   const { customerName, relation } = extractCustomerIdentity(text, raw.customerName);
-  const { firstName, lastName } = splitFirstLastName(customerName, relation);
+  const { firstName, lastName } = splitFirstLastName(customerName);
   let model = normalizeModelName(raw.model);
   let variant = raw.variant;
   let ccSource = raw.cc;
