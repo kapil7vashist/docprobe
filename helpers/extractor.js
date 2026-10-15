@@ -407,6 +407,8 @@ const HERO_VARIANT_TOKENS = new Set([
 const stripHeroEmissionSuffix = (value) =>
   String(value)
     .replace(/[-\s]*OBD(?:\s*-?\s*\d+[A-Z]?\.?)?/gi, ' ')
+    // "E 20" / "E20" is the ethanol blend, not a 20cc engine.
+    .replace(/\bE\s*-?\s*20\b/gi, ' ')
     .replace(/\s+\./g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
