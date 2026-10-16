@@ -427,12 +427,15 @@ export const extractionTemplateHERO = {
   ],
 
   customerAddress: [
+    // Sadguru: pincode sits on the last address line, then MOBILE
+    /\n[A-Z0-9]{17}\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?[A-Za-z][A-Za-z.' ]+\n([\s\S]*?)[ \t]+\d{6}\s*\nMOBILE\s*:/i,
     /\n[A-Z0-9]{17}\n[A-Z0-9]{8,16}\n(?:\d{4,12}\n)?[A-Za-z][A-Za-z.' ]+\n([\s\S]*?)\n\d{6}\nMOBILE\s*:/i,
-    /Address\s+([\s\S]*?)\n(?:UIN Type|State Code)\s+/i
+    // Column header "ADDRESS" is followed by DATE; a real address is not
+    /Address\s+(?!DATE\b)([\s\S]*?)\n(?:UIN Type|State Code)\s+/i
   ],
 
   pincode: [
-    /\n(\d{6})\nMOBILE\s*:/i,
+    /(\d{6})\s*\nMOBILE\s*:/i,
     /Address[\s\S]*?\n(\d{6})\s*\n(?:UIN Type|State Code)/i
   ],
 

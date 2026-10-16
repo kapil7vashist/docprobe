@@ -831,11 +831,13 @@ export const isMakeMismatch = (requestedMake, text, model) => {
  * "SHIV\nRESIDENCY," stays two words.
  */
 const rejoinWrappedWords = (text) =>
-  String(text).replace(/([A-Za-z])\n([A-Za-z]{1,6}),/g, (match, last, next, offset, source) => {
-    const lineStart = source.lastIndexOf('\n', offset - 1);
-    const line = source.slice(lineStart + 1, offset + 1);
-    return line.length >= 28 ? `${last}${next},` : match;
-  });
+  String(text)
+    .replace(/([A-Za-z]-)\n([A-Za-z])/g, '$1$2')
+    .replace(/([A-Za-z])\n([A-Za-z]{1,6}),/g, (match, last, next, offset, source) => {
+      const lineStart = source.lastIndexOf('\n', offset - 1);
+      const line = source.slice(lineStart + 1, offset + 1);
+      return line.length >= 28 ? `${last}${next},` : match;
+    });
 
 const dataExtractor = async (text, oem, dealerCode) => {
   const source = rejoinWrappedWords(text);
