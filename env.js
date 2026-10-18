@@ -3,6 +3,7 @@ dotenv.config();
 
 export const ENV = process.env.ENV;
 export const OCR_KEY = process.env.OCRKEY;
+export const OCR_SAMPLE = process.env.OCR_SAMPLE;
 
 export const DB_NAME = process.env.DB_NAME;
 export const DB_USERNAME = process.env.DB_USERNAME;

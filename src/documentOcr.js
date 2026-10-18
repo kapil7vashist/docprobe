@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { OCR_KEY, ENV } from '../env.js';
+import { OCR_KEY, OCR_SAMPLE, ENV } from '../env.js';
 
 const OCR_API_URL = 'https://api.ocr.space/parse/image';
 
@@ -15,8 +15,19 @@ const MIME_TYPES = {
   PDF: 'application/pdf'
 };
 
-// English, Hindi (Devanagari), digits, and whitespace only
-const DISALLOWED_CHAR_PATTERN = /[^\u0900-\u097Fa-zA-Z0-9\s]/g;
+const FILETYPE_BY_MIME = {
+  'image/jpeg': 'JPG',
+  'image/jpg': 'JPG',
+  'image/png': 'PNG',
+  'image/gif': 'GIF',
+  'image/tiff': 'TIF',
+  'image/tif': 'TIF',
+  'image/bmp': 'BMP',
+  'application/pdf': 'PDF'
+};
+
+// Letters, digits, Hindi, and the marks invoices use in addresses and codes.
+const DISALLOWED_CHAR_PATTERN = /[^\u0900-\u097Fa-zA-Z0-9\s,./\-:#()&+%]/g;
 
 const filterOcrText = (text) => {
   if (!text) {
@@ -25,7 +36,8 @@ const filterOcrText = (text) => {
 
   return text
     .replace(DISALLOWED_CHAR_PATTERN, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
     .trim();
 };
 
@@ -55,28 +67,116 @@ const filterOcrResult = (ocrResult) => {
   };
 };
 
-const normalizeBase64Image = (base64String, filetype = 'JPG') => {
-  const trimmed = base64String.trim();
-
-  if (trimmed.startsWith('data:')) {
-    return trimmed;
-  }
-
-  const mimeType = MIME_TYPES[filetype.toUpperCase()] || MIME_TYPES.JPG;
-  return `data:${mimeType};base64,${trimmed}`;
-};
-
-const getBase64Image = async (base64String, filetype) => {
-  if (ENV === 'development') {
-    const buffer = await readFile(path.join(process.cwd(), 'tmp', 'AADHAR.png'));
-    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
-  }
-
-  if (!base64String) {
+const detectFromBytes = (buffer) => {
+  if (!buffer?.length) {
     return null;
   }
 
-  return normalizeBase64Image(base64String, filetype);
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString('latin1') === '%PDF') {
+    return { filetype: 'PDF', mimeType: MIME_TYPES.PDF };
+  }
+
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { filetype: 'JPG', mimeType: MIME_TYPES.JPG };
+  }
+
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return { filetype: 'PNG', mimeType: MIME_TYPES.PNG };
+  }
+
+  if (buffer.length >= 6 && buffer.subarray(0, 3).toString('latin1') === 'GIF') {
+    return { filetype: 'GIF', mimeType: MIME_TYPES.GIF };
+  }
+
+  if (buffer.length >= 2 && buffer.subarray(0, 2).toString('latin1') === 'BM') {
+    return { filetype: 'BMP', mimeType: MIME_TYPES.BMP };
+  }
+
+  const tiffLe = buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00;
+  const tiffBe = buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a;
+
+  if (buffer.length >= 4 && (tiffLe || tiffBe)) {
+    return { filetype: 'TIF', mimeType: MIME_TYPES.TIF };
+  }
+
+  return null;
+};
+
+const filetypeFromExtension = (filePath) => {
+  const ext = path.extname(filePath).slice(1).toUpperCase();
+  if (ext === 'JPEG') return 'JPG';
+  if (ext === 'TIFF') return 'TIF';
+  return MIME_TYPES[ext] ? ext : 'JPG';
+};
+
+const documentFromBuffer = (buffer, fallbackFiletype = 'JPG') => {
+  const detected = detectFromBytes(buffer);
+  const filetype = detected?.filetype || fallbackFiletype;
+  const mimeType = detected?.mimeType || MIME_TYPES[filetype] || MIME_TYPES.JPG;
+
+  return {
+    buffer,
+    filetype,
+    mimeType,
+    dataUri: `data:${mimeType};base64,${buffer.toString('base64')}`
+  };
+};
+
+const decodeBase64Document = (base64String) => {
+  const trimmed = String(base64String || '').trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  let payload = trimmed;
+  let mimeFromUri = null;
+
+  if (trimmed.startsWith('data:')) {
+    const match = trimmed.match(/^data:([^;,]+)?(?:;[^,]*)?,([\s\S]+)$/);
+    if (match) {
+      mimeFromUri = match[1]?.toLowerCase() || null;
+      payload = match[2];
+    }
+  }
+
+  const buffer = Buffer.from(payload.replace(/\s/g, ''), 'base64');
+  const fallback = FILETYPE_BY_MIME[mimeFromUri] || 'JPG';
+  return documentFromBuffer(buffer, fallback);
+};
+
+const readSampleDocument = async () => {
+  if (!OCR_SAMPLE) {
+    return null;
+  }
+
+  const filePath = path.isAbsolute(OCR_SAMPLE)
+    ? OCR_SAMPLE
+    : path.join(process.cwd(), OCR_SAMPLE);
+  const buffer = await readFile(filePath);
+  return documentFromBuffer(buffer, filetypeFromExtension(filePath));
+};
+
+/**
+ * Uploads win in every environment. OCR_SAMPLE is only the development
+ * fallback when the request has no base64String.
+ */
+const resolveOcrDocument = async (base64String) => {
+  if (base64String && String(base64String).trim()) {
+    return decodeBase64Document(base64String);
+  }
+
+  if (ENV === 'development') {
+    return readSampleDocument();
+  }
+
+  return null;
 };
 
 const documentOcr = async (req, res, next) => {
@@ -84,7 +184,6 @@ const documentOcr = async (req, res, next) => {
     const {
       base64String,
       language = 'eng',
-      filetype = 'JPEG',
       isOverlayRequired = false,
       detectOrientation = true,
       scale = false,
@@ -96,16 +195,16 @@ const documentOcr = async (req, res, next) => {
       return res.status(500).json({ msg: 'OCR API key is not configured' });
     }
 
-    const base64Image = await getBase64Image(base64String, filetype);
+    const document = await resolveOcrDocument(base64String);
 
-    if (!base64Image) {
-      return res.status(400).json({ msg: 'base64String is required' });
+    if (!document?.buffer?.length) {
+      return res.status(400).json({ msg: 'base64String or OCR_SAMPLE is required' });
     }
 
     const formData = new FormData();
-    formData.append('base64Image', base64Image);
+    formData.append('base64Image', document.dataUri);
     formData.append('language', language);
-    formData.append('filetype', filetype);
+    formData.append('filetype', document.filetype);
     formData.append('isOverlayRequired', String(isOverlayRequired));
     formData.append('detectOrientation', String(detectOrientation));
     formData.append('scale', String(scale));
@@ -141,9 +240,14 @@ const documentOcr = async (req, res, next) => {
 
     return res.status(200).json(filterOcrResult(ocrResult));
   } catch (err) {
+    if (err?.code === 'ENOENT') {
+      return res.status(400).json({ msg: 'OCR_SAMPLE file was not found' });
+    }
+
     console.log({ err });
     return res.status(500).json({ msg: 'Unable to Complete Request' });
   }
 };
 
+export { resolveOcrDocument, filterOcrText };
 export default documentOcr;
