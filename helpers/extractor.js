@@ -458,6 +458,15 @@ const stripVidaPaint = (line) =>
     .join(' ')
     .trim();
 
+/** Dealer code on the Vida product row, e.g. "VIDA VX2 PLUS V3PLDSARCEL PEB". */
+const extractVidaProductCode = (text) => {
+  const match = String(text || '').match(
+    /Motor#[\s\S]*?^\d+\.\s+VIDA(?:\s+[A-Z0-9.]+)+\s+([A-Z]\d[A-Z0-9]{5,})\s+[A-Z]{2,4}\s+\d{8}\s+PC/im
+  );
+
+  return match?.[1]?.toUpperCase() || null;
+};
+
 /** "VIDA VX2 GO 2.2 RQ" → model VIDA VX2, variant GO 2.2 RQ */
 const splitVidaName = (value) => {
   const normalized = normalizeModelName(value);
@@ -695,11 +704,13 @@ const enrichExtractedData = (text, oem, raw) => {
   let model = normalizeModelName(raw.model);
   let variant = raw.variant;
   let ccSource = raw.cc;
+  let productCode = null;
 
   if (isHeroOem(oem) && isNewVidaInvoice(text, raw.model)) {
     const vida = splitVidaModelVariant(raw.model, text);
     model = vida.model;
     variant = vida.variant;
+    productCode = extractVidaProductCode(text);
     ccSource = extractVidaCc(text, variant, raw.cc);
   } else if (isHeroOem(oem)) {
     const commercial = splitHeroCommercialName(raw.model);
@@ -740,6 +751,7 @@ const enrichExtractedData = (text, oem, raw) => {
     engineNo: raw.engineNo,
     model,
     variant,
+    ...(productCode ? { productCode } : {}),
     exshowroom: raw.exshowroom,
     cc: normalizeCc(ccSource)
   };

@@ -480,6 +480,18 @@ const pickClosestByDefaultIdv = (matches, exshowroom, cc) => {
       if (hasCc && !bestHasCc) {
         best = current;
         bestDiff = idvDiff;
+        continue;
+      }
+      if (hasCc !== bestHasCc) {
+        continue;
+      }
+    }
+
+    if (idvDiff === bestDiff) {
+      const currentCode = String(current.vehicle_code || current.id || '');
+      const bestCode = String(best.vehicle_code || best.id || '');
+      if (currentCode > bestCode) {
+        best = current;
       }
     }
   }
@@ -495,8 +507,14 @@ const moveClosestFirst = (matches, selected) => {
   }
 
   const selectedKey = getMatchKey(selected);
-  const rest = matches.filter((row) => getMatchKey(row) !== selectedKey);
-  const selectedRow = matches.find((row) => getMatchKey(row) === selectedKey) || selected;
+  const selectedId = String(selected.vehicle_code || selected.id || '');
+  const rest = matches.filter((row) => {
+    const rowId = String(row.vehicle_code || row.id || '');
+    return rowId !== selectedId && getMatchKey(row) !== selectedKey;
+  });
+  const selectedRow = matches.find(
+    (row) => String(row.vehicle_code || row.id || '') === selectedId
+  ) || selected;
 
   return [selectedRow, ...rest];
 };
@@ -669,7 +687,11 @@ const fetchModelsWithFamilyOnVariant = async (
   replacements.familyModel = `%${alpha[0]}%`;
   sql += ' AND model LIKE :familyModel';
 
-  const familyKeywords = [...alpha.slice(1), ...variantKeywords];
+  // Dealer product codes (V3PLDSARCEL) are catalog variant keys, not family words.
+  // Requiring them here hides rows stored as "VX2 PLUS".
+  const familyKeywords = [...alpha.slice(1), ...variantKeywords].filter(
+    (keyword) => !/^[A-Z]{1,4}\d[A-Z0-9]{6,}$/.test(String(keyword || '').toUpperCase())
+  );
   const dualChannel = familyKeywords.some((keyword) => keyword.toUpperCase() === 'DUAL')
     && familyKeywords.some((keyword) => keyword.toUpperCase() === 'CHANNEL');
   const requiredKeywords = dualChannel

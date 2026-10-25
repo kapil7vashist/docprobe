@@ -53,10 +53,12 @@ const pdfParse = async (req, res, next) => {
       });
     }
 
+    const matchVariant = [data?.variant, data?.productCode].filter(Boolean).join(' ') || 'STD';
+
     const mapping = await findRelatedMappingData(
       oem,
       data?.model,
-      data?.variant || 'STD',
+      matchVariant,
       insurer,
       data?.hypothecation || null,
       data?.exshowroom,
