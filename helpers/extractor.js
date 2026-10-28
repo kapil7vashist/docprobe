@@ -608,7 +608,7 @@ const splitSimpleModelVariant = (model) => {
 
 const peelLeadingRelation = (address) => {
   const match = String(address || '').match(
-    /^(S\/O|W\/O|D\/O|C\/O)\s*:?\s*([A-Za-z]+(?:\s+[A-Za-z]+){0,2})(?=\s*,|\s+\d|$)/i
+    /^(S\/O|W\/O|D\/O|C\/O)\s*:?\s*([A-Za-z]+(?:\s+[A-Za-z]+){0,1})(?=\s|,|\d|$)/i
   );
 
   if (!match) {

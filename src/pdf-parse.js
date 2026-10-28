@@ -7,6 +7,7 @@ import fs from 'fs';
 import findRelatedMappingData from '../helpers/findRelatedMappingData.js';
 import getRtoDetails from '../helpers/getRtoDetails.js';
 import getFinancerName from '../helpers/getFinancerName.js';
+import { recognizeDocumentText } from './documentOcr.js';
 
 const getPdfBuffer = async (oem, base64String) => {
   const hasBase64 = base64String && String(base64String).trim();
@@ -36,8 +37,17 @@ const pdfParse = async (req, res, next) => {
     const parser = new PDFParse({ data: new Uint8Array(pdfBuffer) });
     const result = await parser.getText();
 
-    const pdfText = result.text;
-    const data = await dataExtractor(pdfText, oem, dealerCode);
+    let pdfText = result.text;
+    let data = await dataExtractor(pdfText, oem, dealerCode);
+
+    if (!String(data?.model || '').trim()) {
+      const ocrText = await recognizeDocumentText(pdfBuffer);
+      if (ocrText) {
+        pdfText = ocrText;
+        data = await dataExtractor(ocrText, oem, dealerCode);
+      }
+    }
+
     console.log({ data });
 
     await parser.destroy();

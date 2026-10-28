@@ -41,7 +41,7 @@ const levenshteinDistance = (a, b) => {
 };
 
 const getKeywords = (value) => {
-  const normalized = normalizeModelName(String(value || '')).toUpperCase();
+  const normalized = (normalizeModelName(String(value || '')) || '').toUpperCase();
   const versionKeywords = (normalized.match(/\d+\.\d+/g) || []).map((token) =>
     token.replace('.', '')
   );

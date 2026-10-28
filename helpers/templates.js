@@ -502,8 +502,10 @@ export const extractionTemplateHERO = {
 
 export const extractionTemplateSIMPLE = {
   customerName: [
-    // Billed-to and billed-from share one line: "Altaf Husen Sri Panchagavya Motors - Raichur"
-    /Billed To:\s*Billed From:\s*\n(.+?)\s+Sri\s+/i
+    // Text PDF: billed-to and billed-from share one line.
+    /Billed To:\s*Billed From:\s*\n(.+?)\s+Sri\s+/i,
+    // Scanned PDF: the two blocks are stacked.
+    /Billed To:\s*\n([A-Za-z][A-Za-z.' ]+?)\s*\nAddress:/i
   ],
 
   customerAddress: [
@@ -511,7 +513,7 @@ export const extractionTemplateSIMPLE = {
   ],
 
   hypothecation: [
-    /Hypothecation\s*:\s*Banker Name:[ \t]*([A-Za-z][^\n\r]*)/i
+    /Hypothecation[\s\S]*?Banker Name:[ \t]*([A-Za-z][^\n\r]*)/i
   ],
 
   pincode: [
@@ -519,6 +521,7 @@ export const extractionTemplateSIMPLE = {
   ],
 
   customerMobile: [
+    /Billed To:[\s\S]*?Phone No[\s\S]*?(\d{10})/i,
     /Phone No\s*\n(?:[A-Za-z]+\s*\n){0,4}:\s*(\d{10})/i
   ],
 
@@ -540,7 +543,7 @@ export const extractionTemplateSIMPLE = {
 
   exshowroom: [
     // Unit price on the item row, before tax. Net payable includes GST.
-    /\(\d+(?:\.\d+)?\s*KWH\)\s*\n([\d,]+(?:\.\d+)?)/i
+    /(?:\(\d+(?:\.\d+)?\s*KWH\)\s*\n)+([\d,]+(?:\.\d+)?)/i
   ]
 };
 

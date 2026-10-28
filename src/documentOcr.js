@@ -179,6 +179,35 @@ const resolveOcrDocument = async (base64String) => {
   return null;
 };
 
+const recognizeDocumentText = async (buffer) => {
+  if (!OCR_KEY || !buffer?.length) {
+    return null;
+  }
+
+  const document = documentFromBuffer(buffer, 'PDF');
+  const formData = new FormData();
+  formData.append('base64Image', document.dataUri);
+  formData.append('language', 'eng');
+  formData.append('filetype', document.filetype);
+  formData.append('isOverlayRequired', 'false');
+  formData.append('detectOrientation', 'true');
+  formData.append('scale', 'true');
+  formData.append('OCREngine', '2');
+
+  const response = await fetch(OCR_API_URL, {
+    method: 'POST',
+    headers: { apikey: OCR_KEY },
+    body: formData
+  });
+  const ocrResult = await response.json();
+
+  if (!response.ok || ocrResult.IsErroredOnProcessing) {
+    return null;
+  }
+
+  return filterOcrText(ocrResult.ParsedResults?.[0]?.ParsedText || '') || null;
+};
+
 const documentOcr = async (req, res, next) => {
   try {
     const {
@@ -249,5 +278,5 @@ const documentOcr = async (req, res, next) => {
   }
 };
 
-export { resolveOcrDocument, filterOcrText };
+export { resolveOcrDocument, filterOcrText, recognizeDocumentText };
 export default documentOcr;
