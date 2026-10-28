@@ -363,6 +363,15 @@ const getModelScore = (invoiceModel, dbModel, dbCc = null, invoiceCc = null, dbV
     }
   }
 
+  // Catalog "WAVE+" becomes "WAVE PLUS". A plain WAVE invoice should not take it.
+  if (
+    String(dbModel || '').includes('+') &&
+    !String(invoiceModel || '').includes('+') &&
+    !/\bPLUS\b/i.test(invoiceModel || '')
+  ) {
+    score = Math.min(score, 0.4);
+  }
+
   // Prefer rows whose model name carries the invoice displacement (DUKE 250 UG)
   // over sibling lines like DUKE + ADV 250.
   const invoiceDigits = getModelDigitsFromName(invoiceModel);

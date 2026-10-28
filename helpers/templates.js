@@ -507,7 +507,11 @@ export const extractionTemplateSIMPLE = {
   ],
 
   customerAddress: [
-    /Billed To:[\s\S]*?\nAddress:\s*,?\s*(.*?)\s*,?\s*Pincode:/i
+    /Billed To:[\s\S]*?\nAddress:\s*,?\s*([\s\S]*?)\s*,?\s*Pincode:/i
+  ],
+
+  hypothecation: [
+    /Hypothecation\s*:\s*Banker Name:[ \t]*([A-Za-z][^\n\r]*)/i
   ],
 
   pincode: [
@@ -527,7 +531,7 @@ export const extractionTemplateSIMPLE = {
   ],
 
   model: [
-    /\n(SIMPLE\s+ONE\b[^\n]*)/i
+    /\n(SIMPLE\s+(?:ONE|WAVE\+?|DOT|ULTRA)\b[^\n]*)/i
   ],
 
   cc: [
@@ -536,7 +540,7 @@ export const extractionTemplateSIMPLE = {
 
   exshowroom: [
     // Unit price on the item row, before tax. Net payable includes GST.
-    /\(\d+(?:\.\d+)?\s*KWH\)\s*\n([\d,]+)/i
+    /\(\d+(?:\.\d+)?\s*KWH\)\s*\n([\d,]+(?:\.\d+)?)/i
   ]
 };
 

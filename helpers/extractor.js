@@ -142,6 +142,7 @@ const sanitizeAddress = (value) => {
 
   const cleaned = String(value)
     .replace(/\s*\[State Code\s*:\s*\d+\]/gi, '')
+    .replace(/\(\s*State\s*Code\s*:\s*\d+\s*\)/gi, '')
     .replace(/\s+/g, ' ')
     .replace(/\s+\./g, '.')
     .replace(/\s*,\s*/g, ', ')
@@ -555,6 +556,8 @@ const isSimpleOem = (oem) => {
 };
 
 // "SIMPLE ONE X1 GRACE WHITE WITH CHARGER - SCOOTER" → SIMPLE / ONE X1
+// "SIMPLE WAVE TFT PEARL WHITE WITH CHARGER-SCOOTER" → WAVE / TFT PEARL WHITE
+// "SIMPLE ULTRA SCOOTER - ORANGE WITH CHARGER" → ULTRA SCOOTER ORANGE
 const splitSimpleModelVariant = (model) => {
   let normalized = normalizeModelName(model);
 
@@ -563,11 +566,33 @@ const splitSimpleModelVariant = (model) => {
   }
 
   normalized = normalized
+    .replace(/\s+WITH\s+CHARGER(?:\s*-\s*SCOOTER)?\b/gi, '')
     .replace(/\s+-\s*SCOOTER\b/gi, '')
-    .replace(/\bWITH\s+CHARGER\b/gi, '')
-    .replace(/\bGRACE\s+WHITE\b/gi, '')
+    .replace(/\s+-\s+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const one = normalized.match(/^SIMPLE\s+(ONE(?:\s+GEN)?(?:\s+(?:X\d*|S|\d+(?:\.\d+)?))?)/i);
+  if (one) {
+    return { model: 'SIMPLE', variant: one[1].replace(/\s+/g, ' ').trim() };
+  }
+
+  const wave = normalized.match(/^SIMPLE\s+(WAVE\s+S|WAVE\s+PLUS|WAVE)\s+(.+)$/i);
+  if (wave) {
+    return {
+      model: wave[1].replace(/\s+/g, ' ').trim(),
+      variant: wave[2].trim()
+    };
+  }
+
+  const ultra = normalized.match(/^SIMPLE\s+ULTRA\b\s*(.*)$/i);
+  if (ultra) {
+    const rest = ultra[1].trim();
+    return {
+      model: ['ULTRA', rest].filter(Boolean).join(' '),
+      variant: null
+    };
+  }
 
   const match = normalized.match(/^SIMPLE(?:\s+(.+))?$/i);
 
@@ -578,6 +603,25 @@ const splitSimpleModelVariant = (model) => {
   return {
     model: 'SIMPLE',
     variant: match[1]?.trim() || null
+  };
+};
+
+const peelLeadingRelation = (address) => {
+  const match = String(address || '').match(
+    /^(S\/O|W\/O|D\/O|C\/O)\s*:?\s*([A-Za-z]+(?:\s+[A-Za-z]+){0,2})(?=\s*,|\s+\d|$)/i
+  );
+
+  if (!match) {
+    return { address, relation: null };
+  }
+
+  const marker = match[1].toUpperCase().replace(/\s+/g, '');
+  const relation = normalizeRelation(`${marker} ${match[2].trim()}`);
+  const rest = String(address).slice(match[0].length).replace(/^[\s,]+/, '').trim();
+
+  return {
+    address: rest || null,
+    relation
   };
 };
 
@@ -783,15 +827,18 @@ const enrichExtractedData = (text, oem, raw) => {
     ccSource = ccSource || split.cc;
   }
 
-  const address = sanitizeAddress(raw.customerAddress);
+  let address = sanitizeAddress(raw.customerAddress);
   const pincode = extractPincodeFromAddress(address, raw.pincode);
+  const leadingRelation = peelLeadingRelation(address);
+  address = leadingRelation.address;
+  const relationFromAddress = relation || leadingRelation.relation;
 
   return {
     make: oem?.toUpperCase() || null,
     customerName,
     firstName,
     lastName,
-    relation,
+    relation: relationFromAddress,
     customerAddress: address,
     customerMobile: normalizeMobile(raw.customerMobile),
     pincode,
@@ -899,7 +946,7 @@ export const isMakeMismatch = (requestedMake, text, model) => {
 const rejoinWrappedWords = (text) =>
   String(text)
     .replace(/([A-Za-z]-)\n([A-Za-z])/g, '$1$2')
-    .replace(/([A-Za-z])\n([A-Za-z]{1,6}),/g, (match, last, next, offset, source) => {
+    .replace(/([A-Za-z])\n([A-Za-z]{1,5}),/g, (match, last, next, offset, source) => {
       const lineStart = source.lastIndexOf('\n', offset - 1);
       const line = source.slice(lineStart + 1, offset + 1);
       return line.length >= 28 ? `${last}${next},` : match;
