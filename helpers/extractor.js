@@ -5,6 +5,7 @@ import {
   extractionTemplateBAJAJ,
   extractionTemplateTRIUMPH,
   extractionTemplateHERO,
+  extractionTemplateSIMPLE,
   extractionTemplateTVS
 } from './templates.js';
 import { normalizeModelName } from './normalizeModelName.js';
@@ -16,6 +17,8 @@ const OEM_TEMPLATES = {
   TRIUMPH: extractionTemplateTRIUMPH,
   HERO: extractionTemplateHERO,
   'HERO MOTOCORP': extractionTemplateHERO,
+  'SIMPLE ONE': extractionTemplateSIMPLE,
+  'SIMPLE ENERGY': extractionTemplateSIMPLE,
   TVS: extractionTemplateTVS
 };
 
@@ -286,6 +289,11 @@ const normalizeCc = (value) => {
 
   const text = String(value);
 
+  const kwh = text.match(/(\d+(?:\.\d+)?)\s*kwh/i);
+  if (kwh) {
+    return kwh[1];
+  }
+
   // Prefer whole CC digits, e.g. 109.51 -> 109, 110 -> 110
   const whole = text.match(/(\d{2,4})/);
   if (whole) {
@@ -294,7 +302,12 @@ const normalizeCc = (value) => {
 
   // Chetak / EV battery capacity, e.g. 3.5 kWh -> 3.5
   const decimal = text.match(/(\d+\.\d+)/);
-  return decimal ? decimal[1] : null;
+  if (decimal) {
+    return decimal[1];
+  }
+
+  const single = text.match(/^\s*(\d+)\s*$/);
+  return single ? single[1] : null;
 };
 
 const HERO_OEMS = new Set(['HERO', 'HERO MOTOCORP']);
@@ -536,6 +549,38 @@ const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
 const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
 
+const isSimpleOem = (oem) => {
+  const key = oem?.toUpperCase();
+  return key === 'SIMPLE ONE' || key === 'SIMPLE ENERGY';
+};
+
+// "SIMPLE ONE X1 GRACE WHITE WITH CHARGER - SCOOTER" → SIMPLE / ONE X1
+const splitSimpleModelVariant = (model) => {
+  let normalized = normalizeModelName(model);
+
+  if (!normalized) {
+    return { model: null, variant: null };
+  }
+
+  normalized = normalized
+    .replace(/\s+-\s*SCOOTER\b/gi, '')
+    .replace(/\bWITH\s+CHARGER\b/gi, '')
+    .replace(/\bGRACE\s+WHITE\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const match = normalized.match(/^SIMPLE(?:\s+(.+))?$/i);
+
+  if (!match) {
+    return { model: normalized, variant: null };
+  }
+
+  return {
+    model: 'SIMPLE',
+    variant: match[1]?.trim() || null
+  };
+};
+
 const CLUBBED_VARIANT_OEMS = new Set(['BAJAJ', 'KTM', 'TRIUMPH']);
 
 const isClubbedVariantOem = (oem) => CLUBBED_VARIANT_OEMS.has(oem?.toUpperCase());
@@ -727,6 +772,10 @@ const enrichExtractedData = (text, oem, raw) => {
     model = split.model;
     variant = variant || split.variant;
     ccSource = raw.cc;
+  } else if (isSimpleOem(oem)) {
+    const split = splitSimpleModelVariant(model);
+    model = split.model;
+    variant = split.variant;
   } else if (isClubbedVariantOem(oem)) {
     const split = splitClubbedModelVariant(raw.model);
     model = split.model;
@@ -779,6 +828,9 @@ const detectInvoiceMake = (text = '', model = '') => {
   if (/\bTVS\b/.test(haystack) || /\bAPACHE\b/.test(haystack) || /\bJUPITER\b/.test(haystack)) {
     return 'TVS';
   }
+  if (/\bSIMPLE\s+ONE\b/.test(haystack) || /simpleenergy\.in/.test(haystack)) {
+    return 'SIMPLE ONE';
+  }
   if (
     /\bCHETAK\b/.test(haystack) ||
     /\bPULSAR\b/.test(haystack) ||
@@ -812,7 +864,9 @@ const MAKE_ALIASES = {
   'HMSI': 'HONDA',
   KTM: 'KTM',
   TRIUMPH: 'TRIUMPH',
-  TVS: 'TVS'
+  TVS: 'TVS',
+  'SIMPLE ONE': 'SIMPLE ONE',
+  'SIMPLE ENERGY': 'SIMPLE ONE'
 };
 
 const canonicalizeMake = (make) => {

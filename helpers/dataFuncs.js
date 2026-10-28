@@ -54,7 +54,8 @@ const getKeywords = (value) => {
   });
   const wordKeywords = shielded
     .replace(/\d+\.\d+/g, ' ')
-    .replace(/([A-Z]+)(\d+)/g, '$1 $2')
+    // Split ACTIVA125. Keep single-letter trims such as X1 whole.
+    .replace(/([A-Z]{2,})(\d+)/g, '$1 $2')
     .replace(/(\d+)([A-Z]+)/g, '$1 $2')
     .split(/[^A-Z0-9]+/)
     .filter((keyword) => keyword.length > 1)

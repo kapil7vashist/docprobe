@@ -500,6 +500,46 @@ export const extractionTemplateHERO = {
   ]
 };
 
+export const extractionTemplateSIMPLE = {
+  customerName: [
+    // Billed-to and billed-from share one line: "Altaf Husen Sri Panchagavya Motors - Raichur"
+    /Billed To:\s*Billed From:\s*\n(.+?)\s+Sri\s+/i
+  ],
+
+  customerAddress: [
+    /Billed To:[\s\S]*?\nAddress:\s*,?\s*(.*?)\s*,?\s*Pincode:/i
+  ],
+
+  pincode: [
+    /Pincode:\s*(\d{6})/i
+  ],
+
+  customerMobile: [
+    /Phone No\s*\n(?:[A-Za-z]+\s*\n){0,4}:\s*(\d{10})/i
+  ],
+
+  chassisNo: [
+    /VIN\s*No\.?\s*:\s*([A-Z0-9]{17})/i
+  ],
+
+  engineNo: [
+    /Motor:\s*\.?([A-Z0-9]+)/i
+  ],
+
+  model: [
+    /\n(SIMPLE\s+ONE\b[^\n]*)/i
+  ],
+
+  cc: [
+    /\((\d+(?:\.\d+)?)\s*KWH\)/i
+  ],
+
+  exshowroom: [
+    // Unit price on the item row, before tax. Net payable includes GST.
+    /\(\d+(?:\.\d+)?\s*KWH\)\s*\n([\d,]+)/i
+  ]
+};
+
 export const extractionTemplateTVS = {
   customerName: [
     /Vehicle Invoice[^\n]+\n[^\t]+\t([^\n\r\t]+)/i

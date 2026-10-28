@@ -570,6 +570,7 @@
 	{
 		"make" : "SIMPLE ONE",
 		"united" : "SIMPLE ONE",
+		"ksheema" : "SIMPLE ENERGY",
 		"bajaj" : null,
 		"shriram" : null,
 		"icici" : null,
@@ -585,8 +586,7 @@
 		"newindia" : null,
 		"oriental" : null,
 		"policyboss" : null,
-		"royalsundaram" : null,
-		"ksheema" : null
+		"royalsundaram" : null
 	},
 	{
 		"make" : "SUZUKI",
