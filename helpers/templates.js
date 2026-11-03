@@ -543,7 +543,9 @@ export const extractionTemplateSIMPLE = {
 
   exshowroom: [
     // Unit price on the item row, before tax. Net payable includes GST.
-    /(?:\(\d+(?:\.\d+)?\s*KWH\)\s*\n)+([\d,]+(?:\.\d+)?)/i
+    /(?:\(\d+(?:\.\d+)?\s*KWH\)\s*\n)+([\d,]+(?:\.\d+)?)/i,
+    // Scanned tables put the figure under the Unit Price header, not after the battery line.
+    /Unit Price\s*\n\(INR\)\s*\n([\d,]+(?:\.\d+)?)/i
   ]
 };
 
