@@ -1,9 +1,11 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { PDFParse } from 'pdf-parse';
+import { Sequelize } from 'sequelize';
 import dataExtractor, { isMakeMismatch, MAKE_MISMATCH_MSG } from '../helpers/extractor.js';
 import { ENV } from '../env.js';
 import fs from 'fs';
+import { dbConnection } from '../index.js';
 import findRelatedMappingData from '../helpers/findRelatedMappingData.js';
 import getRtoDetails from '../helpers/getRtoDetails.js';
 import getFinancerName from '../helpers/getFinancerName.js';
@@ -113,6 +115,24 @@ const pdfParse = async (req, res, next) => {
   }
 };
 
+const getUnitedPincode = async (pincode) => {
+  const code = String(pincode || '').trim();
+  if (!code) return { state: null, city: null };
+
+  const rows = await dbConnection.query(
+    'SELECT state, city FROM united_pincodes WHERE pincode = :pincode LIMIT 1',
+    {
+      replacements: { pincode: code },
+      type: Sequelize.QueryTypes.SELECT
+    }
+  );
+
+  return {
+    state: rows?.[0]?.state ? String(rows[0].state).trim() : null,
+    city: rows?.[0]?.city ? String(rows[0].city).trim() : null
+  };
+};
+
 const certificateInvoice = async (req, res, next) => {
   try {
     const { oem, dealerCode, base64String } = req.body;
@@ -131,9 +151,11 @@ const certificateInvoice = async (req, res, next) => {
       return res.status(rejected.status).json(rejected.body);
     }
 
+    const { state, city } = await getUnitedPincode(data?.pincode);
+
     ENV === 'development' && fs.writeFileSync(path.join(process.cwd(), 'tmp', `${oem} CERTIFICATE INVOICE.txt`), pdfText);
 
-    return res.status(200).json(data);
+    return res.status(200).json({ ...data, state, city });
   } catch (err) {
     console.log({ err });
     return res.status(500).json({ msg: 'Unable to Compelte Request' });
