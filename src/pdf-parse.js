@@ -24,6 +24,40 @@ const getPdfBuffer = async (oem, base64String) => {
   return null;
 };
 
+const readInvoice = async (pdfBuffer, oem, dealerCode) => {
+  const parser = new PDFParse({ data: new Uint8Array(pdfBuffer) });
+  const result = await parser.getText();
+
+  let pdfText = result.text;
+  let data = await dataExtractor(pdfText, oem, dealerCode);
+
+  if (!String(data?.model || '').trim()) {
+    const ocrText = await recognizeDocumentText(pdfBuffer);
+    if (ocrText) {
+      pdfText = ocrText;
+      data = await dataExtractor(ocrText, oem, dealerCode);
+    }
+  }
+
+  await parser.destroy();
+  return { pdfText, data };
+};
+
+const invoiceError = (oem, pdfText, data) => {
+  if (isMakeMismatch(oem, pdfText, data?.model)) {
+    return { status: 400, body: { msg: MAKE_MISMATCH_MSG } };
+  }
+
+  if (!String(data?.model || '').trim()) {
+    return {
+      status: 400,
+      body: { msg: 'Unable to extract model/variant from the invoice. Please upload the correct invoice.' }
+    };
+  }
+
+  return null;
+};
+
 const pdfParse = async (req, res, next) => {
   try {
     const { oem, dealerCode, base64String, insurer, models } = req.body;
@@ -34,33 +68,12 @@ const pdfParse = async (req, res, next) => {
       return res.status(400).json({ msg: 'base64String is required' });
     }
 
-    const parser = new PDFParse({ data: new Uint8Array(pdfBuffer) });
-    const result = await parser.getText();
-
-    let pdfText = result.text;
-    let data = await dataExtractor(pdfText, oem, dealerCode);
-
-    if (!String(data?.model || '').trim()) {
-      const ocrText = await recognizeDocumentText(pdfBuffer);
-      if (ocrText) {
-        pdfText = ocrText;
-        data = await dataExtractor(ocrText, oem, dealerCode);
-      }
-    }
-
+    const { pdfText, data } = await readInvoice(pdfBuffer, oem, dealerCode);
     console.log({ data });
 
-    await parser.destroy();
-
-    if (isMakeMismatch(oem, pdfText, data?.model)) {
-      return res.status(400).json({ msg: MAKE_MISMATCH_MSG });
-    }
-
-    const hasModel = Boolean(String(data?.model || '').trim());
-    if (!hasModel) {
-      return res.status(400).json({
-        msg: 'Unable to extract model/variant from the invoice. Please upload the correct invoice.'
-      });
+    const rejected = invoiceError(oem, pdfText, data);
+    if (rejected) {
+      return res.status(rejected.status).json(rejected.body);
     }
 
     const matchVariant = [data?.variant, data?.productCode].filter(Boolean).join(' ') || 'STD';
@@ -100,4 +113,32 @@ const pdfParse = async (req, res, next) => {
   }
 };
 
+const certificateInvoice = async (req, res, next) => {
+  try {
+    const { oem, dealerCode, base64String } = req.body;
+
+    const pdfBuffer = await getPdfBuffer(oem, base64String);
+
+    if (!pdfBuffer) {
+      return res.status(400).json({ msg: 'base64String is required' });
+    }
+
+    const { pdfText, data } = await readInvoice(pdfBuffer, oem, dealerCode);
+    console.log({ data });
+
+    const rejected = invoiceError(oem, pdfText, data);
+    if (rejected) {
+      return res.status(rejected.status).json(rejected.body);
+    }
+
+    ENV === 'development' && fs.writeFileSync(path.join(process.cwd(), 'tmp', `${oem} CERTIFICATE INVOICE.txt`), pdfText);
+
+    return res.status(200).json(data);
+  } catch (err) {
+    console.log({ err });
+    return res.status(500).json({ msg: 'Unable to Compelte Request' });
+  }
+};
+
+export { certificateInvoice };
 export default pdfParse;
