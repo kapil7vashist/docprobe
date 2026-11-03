@@ -555,7 +555,13 @@ export const extractionTemplateTVS = {
   ],
 
   customerAddress: [
+    // Two-column TVS invoice: dealer on the left, customer on the right.
+    /S\/W\/D:[^\n]*\n[^\t\n]*\t([^\t\n]+)(?:\n[^\t\n]*\t([^\t\n]+))?(?:\n[^\t\n]*\t([^\t\n]+))?(?:\n[^\t\n]*\t([^\t\n]+))?/i,
     /S\/W\/D[^\n]+\n[^\n]*\s+(WARD[^\n]+)[\s\S]*?\t([A-Z,\s\-]+-\s*\d{6})/i
+  ],
+
+  customerMobile: [
+    /Mob:\s*(\d{10})/i
   ],
 
   pincode: [
@@ -578,11 +584,13 @@ export const extractionTemplateTVS = {
   ],
 
   model: [
+    /(APACHE\s+RTR\s+\d+)/i,
     /Particulars[\s\S]*?\n[A-Z0-9\-]+\n([^\n]+)\n/i,
     /TVS\s+([A-Z0-9\s]+?)\s*-?\s*OBD/i
   ],
 
   variant: [
+    /APACHE\s+RTR\s+\d+[^\n]*?\b(BASE|TOP)\b/i,
     /Variant\s*:\s*([^\n\r]+)/i,
     /Variant\s*\/\s*([^\n\r]+)/i,
     /Type\s*\/\s*Variant\s*:\s*([^\n\r]+)/i
