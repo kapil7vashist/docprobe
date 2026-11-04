@@ -816,6 +816,15 @@ const extractPincodeFromAddress = (address, existingPincode) => {
   return match?.[1] || null;
 };
 
+const compactVehicleId = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const compact = String(value).replace(/\s+/g, '');
+  return compact || null;
+};
+
 const normalizeMobile = (value) => {
   if (!value) {
     return null;
@@ -885,8 +894,8 @@ const enrichExtractedData = (text, oem, raw) => {
     customerMobile: normalizeMobile(raw.customerMobile),
     pincode,
     hypothecation: sanitizeHypothecation(raw.hypothecation),
-    chassisNo: raw.chassisNo,
-    engineNo: raw.engineNo,
+    chassisNo: compactVehicleId(raw.chassisNo),
+    engineNo: compactVehicleId(raw.engineNo),
     model,
     variant,
     ...(productCode ? { productCode } : {}),
