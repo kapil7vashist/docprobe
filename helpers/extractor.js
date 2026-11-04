@@ -6,7 +6,8 @@ import {
   extractionTemplateTRIUMPH,
   extractionTemplateHERO,
   extractionTemplateSIMPLE,
-  extractionTemplateTVS
+  extractionTemplateTVS,
+  extractionTemplateTOYOTA
 } from './templates.js';
 import { normalizeModelName } from './normalizeModelName.js';
 
@@ -19,7 +20,8 @@ const OEM_TEMPLATES = {
   'HERO MOTOCORP': extractionTemplateHERO,
   'SIMPLE ONE': extractionTemplateSIMPLE,
   'SIMPLE ENERGY': extractionTemplateSIMPLE,
-  TVS: extractionTemplateTVS
+  TVS: extractionTemplateTVS,
+  TOYOTA: extractionTemplateTOYOTA
 };
 
 // Fields extracted directly from regex templates
@@ -133,6 +135,42 @@ const sanitizeHypothecation = (value) => {
   }
 
   return cleaned;
+};
+
+const cleanToyotaAddress = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const lines = String(value)
+    .split(/\n+/)
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .filter((line) => line && !/^[,.\s]+$/.test(line));
+
+  if (lines.length > 1 && /^[A-Za-z]+$/.test(lines.at(-1))) {
+    const state = lines.at(-1);
+    const earlier = lines.slice(0, -1).join(' ');
+    if (new RegExp(`\\b${state}\\b`, 'i').test(earlier)) {
+      lines.pop();
+    }
+  }
+
+  const parts = lines
+    .join(', ')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const seen = new Set();
+  const deduped = [];
+
+  for (const part of parts) {
+    const key = part.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(part);
+  }
+
+  return deduped.join(', ') || null;
 };
 
 const sanitizeAddress = (value) => {
@@ -549,6 +587,7 @@ const extractVidaCc = (text, variant, rawCc) => {
 const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
 const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
+const isToyotaOem = (oem) => oem?.toUpperCase() === 'TOYOTA';
 
 const isSimpleOem = (oem) => {
   const key = oem?.toUpperCase();
@@ -827,7 +866,10 @@ const enrichExtractedData = (text, oem, raw) => {
     ccSource = ccSource || split.cc;
   }
 
-  let address = sanitizeAddress(raw.customerAddress);
+  const toyotaAddress = isToyotaOem(oem)
+    ? text.match(/Customer\s+I\d+\s*:\s*\n[^\n]+\n([\s\S]*?)\nMobile\s*No/i)?.[1]
+    : null;
+  let address = toyotaAddress ? cleanToyotaAddress(toyotaAddress) : sanitizeAddress(raw.customerAddress);
   const pincode = extractPincodeFromAddress(address, raw.pincode);
   const leadingRelation = peelLeadingRelation(address);
   address = leadingRelation.address;
@@ -865,6 +907,15 @@ const detectInvoiceMake = (text = '', model = '') => {
 
   if (/\bTRIUMPH\b/.test(haystack) || /\bSCRAMBLER\b/.test(haystack) || /\bTHRUXTON\b/.test(haystack)) {
     return 'TRIUMPH';
+  }
+  if (
+    /\bTOYOTA\b/.test(haystack) ||
+    /\bINNOVA\b/.test(haystack) ||
+    /\bFORTUNER\b/.test(haystack) ||
+    /\bHYRYDER\b/.test(haystack) ||
+    /\bURBAN\s+CRUISER\b/.test(haystack)
+  ) {
+    return 'TOYOTA';
   }
   if (/\bHONDA\b/.test(haystack) || /\bACTIVA\b/.test(haystack)) {
     return 'HONDA';
@@ -912,6 +963,7 @@ const MAKE_ALIASES = {
   KTM: 'KTM',
   TRIUMPH: 'TRIUMPH',
   TVS: 'TVS',
+  TOYOTA: 'TOYOTA',
   'SIMPLE ONE': 'SIMPLE ONE',
   'SIMPLE ENERGY': 'SIMPLE ONE'
 };
@@ -953,7 +1005,7 @@ const rejoinWrappedWords = (text) =>
     });
 
 const dataExtractor = async (text, oem, dealerCode) => {
-  const source = rejoinWrappedWords(text);
+  const source = isToyotaOem(oem) ? text : rejoinWrappedWords(text);
   const templates = getTemplates(oem);
   const raw = extractFromTemplates(source, templates);
   return enrichExtractedData(source, oem, raw);

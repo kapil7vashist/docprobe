@@ -602,3 +602,49 @@ export const extractionTemplateTVS = {
     /Ex\s*Showroom\s*Price[^\d]*Rs\.?\s*([\d,]+\.?\d*)/i
   ]
 };
+
+export const extractionTemplateTOYOTA = {
+  customerName: [
+    /Customer\s+I\d+\s*:\s*\n([^\n]+)/i
+  ],
+
+  customerAddress: [
+    /Customer\s+I\d+\s*:\s*\n[^\n]+\n([\s\S]*?)\nMobile\s*No/i
+  ],
+
+  customerMobile: [
+    /Mobile\s*No\.?\s*(\d{10})/i
+  ],
+
+  pincode: [
+    /[A-Z][A-Z ]+\s*-\s*(\d{6})\b/
+  ],
+
+  hypothecation: [
+    /Hire Purchase\/Leased To\/Hypothecated To\/Lessor:\s*([^\n]+)/i
+  ],
+
+  chassisNo: [
+    /VIN\s*No\.[\s\S]*?\b([A-Z0-9]{17})(?:~\d+)?/i
+  ],
+
+  engineNo: [
+    /VIN\s*No\.[\s\S]*?\b[A-Z0-9]{17}(?:~\d+)?\s*\n([A-Z0-9]+(?:[ \t]+[A-Z0-9]+)?)/i
+  ],
+
+  model: [
+    /\n(?:Debit\s+)?([A-Z][A-Z0-9()]+(?:\s+[A-Z0-9()]+)*)\s+Price of one\b/i
+  ],
+
+  variant: [
+    /Price of one\s+[\d,]+\.\d+\s*:\s*\n(?:PACKAGE\s*:?\s*)?([^\n]+)/i
+  ],
+
+  cc: [
+    /PACKAGE\s*:?\s*[^\n]*?(\d+(?:\.\d+)?)\s*L\b/i
+  ],
+
+  exshowroom: [
+    /Ex-showroom price is Rs\.?\s*([\d,]+\.\d+)/i
+  ]
+};
