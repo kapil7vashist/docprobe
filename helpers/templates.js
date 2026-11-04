@@ -253,8 +253,8 @@ export const extractionTemplateHONDA = {
   model: [
     /Description of Goods[\s\S]*?\n\d+\s+([A-Z][A-Z0-9 ]+?)\s+OBD/i,
     /Description of Goods[\s\S]*?\n\d+\s+([A-Z][A-Z0-9]+(?:\s+\d{2,3}[A-Z]?)?)\s+\dID/i,
-    // Same line: SP125 (CBF125MEFS)
-    /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9]+)\s*\(/i,
+    // Same line: SP125 (CBF125MEFS) or SHINE 125 (CBF125S)
+    /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9]+(?:\s+\d{2,4})?)\s*\(/i,
     // Split lines: ACTIVA 125\n(SCV125S)
     /Model\(Model Code\)[^\n]*\n([A-Z][A-Z0-9 ]+)\s*\n\s*\(/i,
     /Model\s*\/\s*Commercial Name of the vehicle\s*:\s*(.+)/i,
@@ -272,8 +272,9 @@ export const extractionTemplateHONDA = {
   ],
 
   variant: [
-    // Prefer short brake/variant token after Type code (e.g. 6ID DRUM ...)
+    // Prefer short brake/variant token after Type code (e.g. 6ID DRUM ... or 6ID/ SHINE 125 DRUM)
     /\d+\s+[A-Z][A-Z0-9 ]*?\s+\dID\s+(DISC|DRUM|DX|STD|DLX|CBS)\b/i,
+    /[0-9]ID\/\s*[A-Z][A-Z0-9]*(?:\s+\d{2,4})?\s+(DISC|DRUM|DX|STD|DLX|CBS)\b/i,
     /\d+\s+[A-Z][A-Z0-9 ]+?\s+\dID\s+([A-Z0-9 ]+?)\s+[\d,]+\./i,
     /OBD2B\s+\dID\s+([A-Z0-9 ]+?)\s*\n/i,
     /\(\s*([A-Z0-9][A-Z0-9\s]*?)\s*\)\s*[0-9]ID/i,
