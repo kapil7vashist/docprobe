@@ -941,11 +941,20 @@ export const getModelVariant = async (
     const bestTier = topMatches.filter((row) => Math.abs((row.matchScore ?? 0) - bestScore) < 0.001);
     const qualifiedMatches = bestTier.filter((row) => (row.matchScore ?? 0) >= minMatchScore);
     let idvCandidates = qualifiedMatches.length ? qualifiedMatches : bestTier;
-    const invoiceHasI3s = getKeywords(variant).some((keyword) => keyword.toUpperCase() === 'I3S');
-    if (invoiceHasI3s) {
-      const i3sRows = idvCandidates.filter((row) =>
-        getKeywords(row?.variant).some((keyword) => keyword.toUpperCase() === 'I3S')
-      );
+    const invoiceKeywords = getKeywords(variant).map((keyword) => keyword.toUpperCase());
+    const rowKeywords = (row) => getKeywords(row?.variant).map((keyword) => keyword.toUpperCase());
+    const invoiceHasXtec20 = invoiceKeywords.includes('XTEC') && invoiceKeywords.includes('20');
+    const invoiceHasI3s = invoiceKeywords.includes('I3S');
+    if (invoiceHasXtec20) {
+      const xtecRows = idvCandidates.filter((row) => {
+        const keywords = rowKeywords(row);
+        return keywords.includes('XTEC') && keywords.includes('20');
+      });
+      if (xtecRows.length) {
+        idvCandidates = xtecRows;
+      }
+    } else if (invoiceHasI3s) {
+      const i3sRows = idvCandidates.filter((row) => rowKeywords(row).includes('I3S'));
       if (i3sRows.length) {
         idvCandidates = i3sRows;
       }
