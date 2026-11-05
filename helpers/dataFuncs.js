@@ -56,7 +56,7 @@ const getKeywords = (value) => {
     .replace(/\d+\.\d+/g, ' ')
     // Split ACTIVA125. Keep single-letter trims such as X1 whole.
     .replace(/([A-Z]{2,})(\d+)/g, '$1 $2')
-    .replace(/(\d+)([A-Z]+)/g, '$1 $2')
+    .replace(/(\d+)([A-Z]{2,})/g, '$1 $2')
     .split(/[^A-Z0-9]+/)
     .filter((keyword) => keyword.length > 1)
     .map((keyword) => {
@@ -196,7 +196,17 @@ const getVariantScore = (invoiceVariant, dbVariant, invoiceModel = null) => {
     }
   }
 
-  if (invoice.startsWith(candidate) && candidate.length >= 4) {
+  const unmatchedInvoice = invoiceKeywords.filter((keyword) => {
+    if (keyword.length <= 1 || isIgnorableVariantToken(keyword)) {
+      return false;
+    }
+
+    return !keywordMatches(keyword);
+  });
+
+  // A shorter catalog name should not outrank the invoice when the invoice
+  // still has feature tokens that name does not contain.
+  if (invoice.startsWith(candidate) && candidate.length >= 4 && unmatchedInvoice.length === 0) {
     scores.push(0.92);
   }
 
@@ -930,7 +940,16 @@ export const getModelVariant = async (
     const bestScore = topMatches[0]?.matchScore ?? 0;
     const bestTier = topMatches.filter((row) => Math.abs((row.matchScore ?? 0) - bestScore) < 0.001);
     const qualifiedMatches = bestTier.filter((row) => (row.matchScore ?? 0) >= minMatchScore);
-    const idvCandidates = qualifiedMatches.length ? qualifiedMatches : bestTier;
+    let idvCandidates = qualifiedMatches.length ? qualifiedMatches : bestTier;
+    const invoiceHasI3s = getKeywords(variant).some((keyword) => keyword.toUpperCase() === 'I3S');
+    if (invoiceHasI3s) {
+      const i3sRows = idvCandidates.filter((row) =>
+        getKeywords(row?.variant).some((keyword) => keyword.toUpperCase() === 'I3S')
+      );
+      if (i3sRows.length) {
+        idvCandidates = i3sRows;
+      }
+    }
 
     if (isIdvRangeRequired) {
       closestModel = pickClosestByDefaultIdv(idvCandidates, exshowroom, cc);

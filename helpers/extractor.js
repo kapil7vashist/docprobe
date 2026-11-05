@@ -395,6 +395,11 @@ const getHeroColorWordCount = (words) => {
     return 2;
   }
 
+  // "BLACK HEAVY GREY" is one paint name.
+  if (words.length >= 3 && w2 === 'HEAVY' && COLOR_SUFFIX_WORDS.has(words[words.length - 3])) {
+    return 3;
+  }
+
   return 2;
 };
 
@@ -408,7 +413,7 @@ const extractHeroDescriptionLine = (text) => {
 
 const extractHeroVariant = (text, model) => {
   const descriptionLine = extractHeroDescriptionLine(text);
-  const expandedDescription = expandHeroAbbreviations(descriptionLine);
+  const expandedDescription = expandHeroAbbreviations(normalizeModelName(descriptionLine));
   const expandedModel = expandHeroAbbreviations(model);
 
   if (!expandedDescription || !expandedModel) {
@@ -478,6 +483,14 @@ const splitHeroCommercialName = (rawModel) => {
   }
 
   value = stripHeroEmissionSuffix(value);
+
+  const xtecVersion = value.match(/^(.*?)\s+(XTEC(?:\s+2\.0)?)$/i);
+  if (xtecVersion?.[1]) {
+    return {
+      model: xtecVersion[1].trim(),
+      variant: xtecVersion[2].trim()
+    };
+  }
 
   const withCc = value.match(/^(.+?\s+(\d{2,3}))(?:\s+(.+))?$/);
   if (withCc) {
