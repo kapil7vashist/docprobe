@@ -725,6 +725,16 @@ const splitClubbedModelVariant = (model) => {
 
   normalized = normalized.replace(/^(?:KTM|TRIUMPH|BAJAJ)\s+/i, '').trim();
 
+  // "PULSAR NS200" → model PULSAR, variant NS 200
+  const familyCode = normalized.match(/^(.+?)\s+([A-Z]{1,4})(\d{2,4})$/i);
+  if (familyCode) {
+    return {
+      model: familyCode[1].trim(),
+      variant: `${familyCode[2]} ${familyCode[3]}`.trim(),
+      cc: familyCode[3]
+    };
+  }
+
   // Glued displacement+variant (400XC) — DB usually stores CC inside variant
   const glued = normalized.match(/^(.+?)\s+(\d{2,3})([A-Z][A-Z0-9\-]*)$/i);
   if (glued) {
