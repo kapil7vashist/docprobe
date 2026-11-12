@@ -402,7 +402,11 @@ const getHeroColorWordCount = (words) => {
     return 3;
   }
 
-  return 2;
+  if (w2 === 'HEAVY' || COLOR_SUFFIX_WORDS.has(w2)) {
+    return 2;
+  }
+
+  return 1;
 };
 
 const extractHeroDescriptionLine = (text) => {
@@ -491,6 +495,14 @@ const splitHeroCommercialName = (rawModel) => {
     return {
       model: xtecVersion[1].trim(),
       variant: xtecVersion[2].trim()
+    };
+  }
+
+  const flexTrim = value.match(/^(.*?)\s+FLEX$/i);
+  if (flexTrim?.[1]) {
+    return {
+      model: flexTrim[1].trim(),
+      variant: 'FLEX'
     };
   }
 
