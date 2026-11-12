@@ -7,7 +7,8 @@ import {
   extractionTemplateHERO,
   extractionTemplateSIMPLE,
   extractionTemplateTVS,
-  extractionTemplateTOYOTA
+  extractionTemplateTOYOTA,
+  extractionTemplateSUZUKI
 } from './templates.js';
 import { normalizeModelName } from './normalizeModelName.js';
 
@@ -21,7 +22,8 @@ const OEM_TEMPLATES = {
   'SIMPLE ONE': extractionTemplateSIMPLE,
   'SIMPLE ENERGY': extractionTemplateSIMPLE,
   TVS: extractionTemplateTVS,
-  TOYOTA: extractionTemplateTOYOTA
+  TOYOTA: extractionTemplateTOYOTA,
+  SUZUKI: extractionTemplateSUZUKI
 };
 
 // Fields extracted directly from regex templates
@@ -601,6 +603,59 @@ const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 
 const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
 const isToyotaOem = (oem) => oem?.toUpperCase() === 'TOYOTA';
+const isSuzukiOem = (oem) => oem?.toUpperCase() === 'SUZUKI';
+
+const cleanSuzukiAddress = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  let text = String(value).replace(/\s+/g, ' ').trim();
+  const pin = text.match(/\b([A-Z]+-\d{6})$/i);
+  let body = pin ? text.slice(0, pin.index).trim() : text;
+  const words = body.split(' ').filter(Boolean);
+
+  for (let size = Math.floor(words.length / 2); size >= 3; size -= 1) {
+    const first = words.slice(0, size).join(' ');
+    const second = words.slice(size, size * 2).join(' ');
+    if (first.toUpperCase() === second.toUpperCase()) {
+      body = [first, ...words.slice(size * 2)].join(' ').trim();
+      break;
+    }
+  }
+
+  const cityPin = pin ? pin[1].replace('-', ' ') : '';
+  return [body, cityPin].filter(Boolean).join(', ') || null;
+};
+
+const splitSuzukiModelVariant = (model, cc) => {
+  const value = normalizeModelName(model)?.replace(/\s*\([A-Z0-9]+\)\s*$/i, '').trim();
+
+  if (!value) {
+    return { model: null, variant: null, cc: cc || null };
+  }
+
+  const burgmanStreet = value.match(/^BURGMAN\s+STREET(?:\s+(.+))?$/i);
+  if (burgmanStreet) {
+    return {
+      model: 'BURGMAN STREET',
+      variant: burgmanStreet[1]?.trim() || null,
+      cc: cc || null
+    };
+  }
+
+  if (/^ACCESS\b/i.test(value)) {
+    const has125 = /^ACCESS\s+125\b/i.test(value);
+    const rest = value.replace(/^ACCESS(?:\s+125)?\s*/i, '').trim();
+    return {
+      model: has125 ? 'ACCESS 125' : 'ACCESS',
+      variant: rest || null,
+      cc: cc || (has125 ? '125' : null)
+    };
+  }
+
+  return { model: value, variant: null, cc: cc || null };
+};
 
 const isSimpleOem = (oem) => {
   const key = oem?.toUpperCase();
@@ -877,6 +932,11 @@ const enrichExtractedData = (text, oem, raw) => {
     model = commercial.model;
     variant = extractHeroVariant(text, model) || commercial.variant || expandHeroAbbreviations(variant);
     ccSource = extractHeroCc(model, null);
+  } else if (isSuzukiOem(oem)) {
+    const split = splitSuzukiModelVariant(model, ccSource);
+    model = split.model;
+    variant = split.variant;
+    ccSource = split.cc || ccSource;
   } else if (isHondaOem(oem)) {
     const split = splitHondaModelVariant(model, variant);
     model = split.model;
@@ -901,7 +961,11 @@ const enrichExtractedData = (text, oem, raw) => {
   const toyotaAddress = isToyotaOem(oem)
     ? text.match(/Customer\s+I\d+\s*:\s*\n[^\n]+\n([\s\S]*?)\nMobile\s*No/i)?.[1]
     : null;
-  let address = toyotaAddress ? cleanToyotaAddress(toyotaAddress) : sanitizeAddress(raw.customerAddress);
+  let address = toyotaAddress
+    ? cleanToyotaAddress(toyotaAddress)
+    : isSuzukiOem(oem)
+      ? cleanSuzukiAddress(raw.customerAddress)
+      : sanitizeAddress(raw.customerAddress);
   const pincode = extractPincodeFromAddress(address, raw.pincode);
   const leadingRelation = peelLeadingRelation(address);
   address = leadingRelation.address;
@@ -948,6 +1012,9 @@ const detectInvoiceMake = (text = '', model = '') => {
     /\bURBAN\s+CRUISER\b/.test(haystack)
   ) {
     return 'TOYOTA';
+  }
+  if (/\bSUZUKI\b/.test(haystack) || /\bBURGMAN\b/.test(haystack)) {
+    return 'SUZUKI';
   }
   if (/\bHONDA\b/.test(haystack) || /\bACTIVA\b/.test(haystack)) {
     return 'HONDA';
@@ -996,6 +1063,7 @@ const MAKE_ALIASES = {
   TRIUMPH: 'TRIUMPH',
   TVS: 'TVS',
   TOYOTA: 'TOYOTA',
+  SUZUKI: 'SUZUKI',
   'SIMPLE ONE': 'SIMPLE ONE',
   'SIMPLE ENERGY': 'SIMPLE ONE'
 };

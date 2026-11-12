@@ -648,3 +648,42 @@ export const extractionTemplateTOYOTA = {
     /Ex-showroom price is Rs\.?\s*([\d,]+\.\d+)/i
   ]
 };
+
+export const extractionTemplateSUZUKI = {
+  customerName: [
+    /Buyer\s*-\s*([^\n]+)/i
+  ],
+
+  customerAddress: [
+    /Buyer\s*-\s*[^\n]+\n([\s\S]*?\n[A-Z]+-\d{6})/i
+  ],
+
+  pincode: [
+    /Buyer\s*-\s*[^\n]+\n[\s\S]*?\n[A-Z]+-(\d{6})/i
+  ],
+
+  hypothecation: [
+    /HP\s+Sub Dealer\/Agent\s*\n(.+?)\s+[A-Z]+\s+BR\.?\s*(?:\n|$)/i,
+    /HP\s+Sub Dealer\/Agent\s*\n([^\n]*\b(?:FINANCE|BANK|CAPITAL)\b[^\n]*)/i
+  ],
+
+  chassisNo: [
+    /Chassis\s*No\s*:\s*([A-Z0-9]{17})/i
+  ],
+
+  engineNo: [
+    /Engine\s*No\s*:\s*([A-Z0-9-]+)/i
+  ],
+
+  model: [
+    /\n1\s+([A-Z][A-Z0-9 ]+?)\s+\([A-Z0-9]+\)/i
+  ],
+
+  cc: [
+    /\n1\s+[A-Z][A-Z0-9 ]+?\s+\([A-Z]*(\d{2,4})[A-Z0-9]*\)/i
+  ],
+
+  exshowroom: [
+    /EX\s*SHOW\s*ROOM\s*PRICE\s+([\d,]+\.\d+)/i
+  ]
+};
