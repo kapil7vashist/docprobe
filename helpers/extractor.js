@@ -8,7 +8,8 @@ import {
   extractionTemplateSIMPLE,
   extractionTemplateTVS,
   extractionTemplateTOYOTA,
-  extractionTemplateSUZUKI
+  extractionTemplateSUZUKI,
+  extractionTemplateYAMAHA
 } from './templates.js';
 import { normalizeModelName } from './normalizeModelName.js';
 
@@ -23,7 +24,8 @@ const OEM_TEMPLATES = {
   'SIMPLE ENERGY': extractionTemplateSIMPLE,
   TVS: extractionTemplateTVS,
   TOYOTA: extractionTemplateTOYOTA,
-  SUZUKI: extractionTemplateSUZUKI
+  SUZUKI: extractionTemplateSUZUKI,
+  YAMAHA: extractionTemplateYAMAHA
 };
 
 // Fields extracted directly from regex templates
@@ -616,6 +618,51 @@ const isHeroOem = (oem) => HERO_OEMS.has(oem?.toUpperCase());
 const isHondaOem = (oem) => oem?.toUpperCase() === 'HONDA';
 const isToyotaOem = (oem) => oem?.toUpperCase() === 'TOYOTA';
 const isSuzukiOem = (oem) => oem?.toUpperCase() === 'SUZUKI';
+const isYamahaOem = (oem) => oem?.toUpperCase() === 'YAMAHA';
+
+const cleanYamahaAddress = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const cleaned = String(value)
+    .replace(/\(\s*\d+\s*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+,/g, ',')
+    .replace(/,(?:\s*,)+/g, ',')
+    .replace(/^[,\s]+|[,\s]+$/g, '')
+    .trim();
+
+  return cleaned || null;
+};
+
+const splitYamahaModelVariant = (model) => {
+  let value = normalizeModelName(model);
+  if (!value) {
+    return { model: null, variant: null };
+  }
+
+  value = value.replace(/^YAMAHA\s*-?\s*/i, '').replace(/\s+/g, ' ').trim();
+
+  if (/^MT[-\s]?15$/i.test(value)) {
+    return { model: 'MT-15', variant: null };
+  }
+
+  if (/^CYGNUS\s+RAY\s+ZR$/i.test(value)) {
+    return { model: 'CYGNUS RAY ZR', variant: null };
+  }
+
+  if (/^FASCINO\b/i.test(value)) {
+    const has125 = /^FASCINO\s+125\b/i.test(value);
+    const rest = value.replace(/^FASCINO(?:\s+125)?\s*/i, '').trim();
+    return {
+      model: has125 ? 'FASCINO 125' : 'FASCINO',
+      variant: rest || null
+    };
+  }
+
+  return { model: value, variant: null };
+};
 
 const cleanSuzukiAddress = (value) => {
   if (!value) {
@@ -944,6 +991,10 @@ const enrichExtractedData = (text, oem, raw) => {
     model = commercial.model;
     variant = extractHeroVariant(text, model) || commercial.variant || expandHeroAbbreviations(variant);
     ccSource = extractHeroCc(model, null);
+  } else if (isYamahaOem(oem)) {
+    const split = splitYamahaModelVariant(model);
+    model = split.model;
+    variant = split.variant;
   } else if (isSuzukiOem(oem)) {
     const split = splitSuzukiModelVariant(model, ccSource);
     model = split.model;
@@ -977,7 +1028,9 @@ const enrichExtractedData = (text, oem, raw) => {
     ? cleanToyotaAddress(toyotaAddress)
     : isSuzukiOem(oem)
       ? cleanSuzukiAddress(raw.customerAddress)
-      : sanitizeAddress(raw.customerAddress);
+      : isYamahaOem(oem)
+        ? cleanYamahaAddress(raw.customerAddress)
+        : sanitizeAddress(raw.customerAddress);
   const pincode = extractPincodeFromAddress(address, raw.pincode);
   const leadingRelation = peelLeadingRelation(address);
   address = leadingRelation.address;
@@ -1024,6 +1077,9 @@ const detectInvoiceMake = (text = '', model = '') => {
     /\bURBAN\s+CRUISER\b/.test(haystack)
   ) {
     return 'TOYOTA';
+  }
+  if (/\bYAMAHA\b/.test(haystack) || /\bFASCINO\b/.test(haystack) || /\bCYGNUS\b/.test(haystack)) {
+    return 'YAMAHA';
   }
   if (/\bSUZUKI\b/.test(haystack) || /\bBURGMAN\b/.test(haystack)) {
     return 'SUZUKI';
@@ -1076,6 +1132,7 @@ const MAKE_ALIASES = {
   TVS: 'TVS',
   TOYOTA: 'TOYOTA',
   SUZUKI: 'SUZUKI',
+  YAMAHA: 'YAMAHA',
   'SIMPLE ONE': 'SIMPLE ONE',
   'SIMPLE ENERGY': 'SIMPLE ONE'
 };
@@ -1117,7 +1174,7 @@ const rejoinWrappedWords = (text) =>
     });
 
 const dataExtractor = async (text, oem, dealerCode) => {
-  const source = isToyotaOem(oem) ? text : rejoinWrappedWords(text);
+  const source = isToyotaOem(oem) || isYamahaOem(oem) ? text : rejoinWrappedWords(text);
   const templates = getTemplates(oem);
   const raw = extractFromTemplates(source, templates);
   return enrichExtractedData(source, oem, raw);

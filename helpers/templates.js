@@ -687,3 +687,41 @@ export const extractionTemplateSUZUKI = {
     /EX\s*SHOW\s*ROOM\s*PRICE\s+([\d,]+\.\d+)/i
   ]
 };
+
+export const extractionTemplateYAMAHA = {
+  customerName: [
+    /([A-Za-z][A-Za-z ]+)\nCustomer ID:/i
+  ],
+
+  customerAddress: [
+    /Phone:\s*\d+\s+(.+)\nEmail:\s*\S+\s+(.+)\nGSTIN:\s*\S+[ \t]*([^\n]*)/i
+  ],
+
+  customerMobile: [
+    /Contact No:\s*(\d{10})/i
+  ],
+
+  pincode: [
+    /Email:\s*\S+\s+[^\n]*?(\d{6})/i
+  ],
+
+  hypothecation: [
+    /Financier:\s*([A-Z][A-Z0-9&. ]*?)(?=\s+\d{6}|\s*\n|$)/i
+  ],
+
+  chassisNo: [
+    /Chassis\s*No\s*:\s*([A-Z0-9]{17})/i
+  ],
+
+  engineNo: [
+    /Engine\s*No\s*:\s*([A-Z0-9]+)/i
+  ],
+
+  model: [
+    /Model Name:\s*YAMAHA\s*-?\s*([^\n]+)/i
+  ],
+
+  exshowroom: [
+    /Ex-Showroom\s+([\d,]+\.\d+)/i
+  ]
+};
