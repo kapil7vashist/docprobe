@@ -1167,10 +1167,10 @@ export const isMakeMismatch = (requestedMake, text, model) => {
 const rejoinWrappedWords = (text) =>
   String(text)
     .replace(/([A-Za-z]-)\n([A-Za-z])/g, '$1$2')
-    .replace(/([A-Za-z])\n([A-Za-z]{1,5}),/g, (match, last, next, offset, source) => {
+    .replace(/\b([A-Za-z]{2,6})\n([A-Za-z]{1,5}),/g, (match, head, next, offset, source) => {
       const lineStart = source.lastIndexOf('\n', offset - 1);
-      const line = source.slice(lineStart + 1, offset + 1);
-      return line.length >= 28 ? `${last}${next},` : match;
+      const line = source.slice(lineStart + 1, offset + head.length);
+      return line.length >= 28 ? `${head}${next},` : match;
     });
 
 const dataExtractor = async (text, oem, dealerCode) => {
